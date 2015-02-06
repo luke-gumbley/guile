@@ -13,6 +13,7 @@
     <description>This is the com.atlassian.plugins.guile:Guile plugin for Atlassian JIRA.</description>
     <packaging>atlassian-plugin</packaging>
     <dependencies>
+
         <dependency>
             <groupId>com.atlassian.jira</groupId>
             <artifactId>jira-api</artifactId>
@@ -110,6 +111,7 @@
                 <configuration>
                     <productVersion>${jira.version}</productVersion>
                     <productDataVersion>${jira.version}</productDataVersion>
+                    <jvmArgs>-Xmx512m -XX:MaxPermSize=512m</jvmArgs>
                     <!-- Uncomment to install TestKit backdoor in JIRA. -->
                     <!--
 					<pluginArtifacts>

@@ -24,6 +24,7 @@
   </component>
   <!-- import from the product container -->
   <component-import key="applicationProperties" interface="com.atlassian.sal.api.ApplicationProperties"/>
+  <component-import key="userManager" interface="com.atlassian.sal.api.user.UserManager" />
   <rest name="My Rest Resource" i18n-name-key="my-rest-resource.name" key="my-rest-resource" path="/guile" version="1.0">
     <description key="my-rest-resource.description">The My Rest Resource Plugin</description>
   </rest>
