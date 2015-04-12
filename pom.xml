@@ -12,6 +12,21 @@
     <name>Guile</name>
     <description>This is the com.atlassian.plugins.guile:Guile plugin for Atlassian JIRA.</description>
     <packaging>atlassian-plugin</packaging>
+    <repositories>
+        <repository>
+            <id>atlassian-public</id>
+            <url>https://maven.atlassian.com/repository/public</url>
+            <snapshots>
+                <enabled>true</enabled>
+                <updatePolicy>never</updatePolicy>
+                <checksumPolicy>warn</checksumPolicy>
+            </snapshots>
+            <releases>
+                <enabled>true</enabled>
+                <checksumPolicy>warn</checksumPolicy>
+            </releases>
+        </repository>
+    </repositories>
     <dependencies>
 
         <dependency>
@@ -99,6 +114,18 @@
             <artifactId>mockito-all</artifactId>
             <version>1.8.5</version>
             <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.sun.jersey</groupId>
+            <artifactId>jersey-client</artifactId>
+            <version>1.8-atlassian-16</version>
+            <scope>provided</scope>
+        </dependency>
+        <dependency>
+            <groupId>com.sun.jersey</groupId>
+            <artifactId>jersey-json</artifactId>
+            <version>1.8-atlassian-16</version>
+            <scope>provided</scope>
         </dependency>
     </dependencies>
     <build>
