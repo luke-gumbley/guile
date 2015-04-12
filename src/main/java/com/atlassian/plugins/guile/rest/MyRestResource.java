@@ -21,13 +21,16 @@ import javax.servlet.http.HttpServletRequest;
 import javax.ws.rs.*;
 import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
+import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
-import java.util.List;
+import java.util.*;
+
 import com.sun.jersey.api.client.*;
 import com.sun.jersey.api.client.WebResource.Builder;
 import com.sun.jersey.api.client.config.ClientConfig;
 import com.sun.jersey.api.client.config.DefaultClientConfig;
 import com.sun.jersey.api.json.JSONConfiguration;
+import com.sun.jersey.core.util.MultivaluedMapImpl;
 import org.codehaus.jackson.annotate.JsonIgnoreProperties;
 import org.codehaus.jackson.annotate.JsonProperty;
 
@@ -109,6 +112,19 @@ public class MyRestResource {
         public BoardModel[] boards;
     }
 
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class sprintIssueContents {
+        public IssueModel[] completedIssues;
+        public IssueModel[] incompletedIssues;
+        public IssueModel[] puntedIssues;
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    private static class sprintIssueResponse {
+        @JsonProperty("contents")
+        public sprintIssueContents contents;
+    }
+
     @GET
     @AnonymousAllowed
     @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
@@ -122,37 +138,46 @@ public class MyRestResource {
     @GET
     @AnonymousAllowed
     @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
-    @Path("sprints")
-    public Response getSprints(@Context HttpServletRequest request, @DefaultValue("0") @QueryParam("id") long id, @DefaultValue("") @QueryParam("name") String name) {
-        ApplicationUser user = getCurrentUser(request);
-
-        if(id == 0) {
-            // find matching board name
-            BoardModel[] boards = executeCall(request,boardResponse.class,"greenhopper/1.0/rapidview").boards;
-            for(int i = 0; i < boards.length ; i++)
-                if(boards[i].getName().equals(name)) {
-                    id = boards[i].getId();
-                    i = boards.length;
-                }
-        }
-
-        SprintModel[] sprints = id == 0
-            ? new SprintModel[0]
-            : executeCall(request,sprintResponse.class,"greenhopper/1.0/sprintquery/" + id).sprints;
+    @Path("boards/{boardId}/sprints")
+    public Response getSprints(@Context HttpServletRequest request, @PathParam("boardId") long id) {
+        SprintModel[] sprints = executeCall(request,sprintResponse.class,"greenhopper/1.0/sprintquery/" + id).sprints;
 
         return Response.ok(new GetSprintsModel(sprints)).build();
     }
 
+    @GET
+    @AnonymousAllowed
+    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+    @Path("boards/{boardId}/sprints/{sprintId}/issues")
+    public Response getSprintIssues(@Context HttpServletRequest request, @PathParam("boardId") long boardId, @PathParam("sprintId") long sprintId) {
+        MultivaluedMap<String, String> query = new MultivaluedMapImpl();
+        query.add("rapidViewId",Long.toString(boardId));
+        query.add("sprintId",Long.toString(sprintId));
+
+        sprintIssueResponse response = executeCall(request, sprintIssueResponse.class, "greenhopper/1.0/rapid/charts/sprintreport",query);
+
+        ArrayList<IssueModel> issues = new ArrayList<IssueModel>();
+        Collections.addAll(issues,response.contents.completedIssues);
+        Collections.addAll(issues,response.contents.incompletedIssues);
+        Collections.addAll(issues,response.contents.puntedIssues);
+
+        return Response.ok(new GetSprintIssuesModel(issues.toArray(new IssueModel[issues.size()]))).build();
+    }
+
     private String executeCall(HttpServletRequest req, String url) {
-        return executeCall(req, String.class, url);
+        return executeCall(req, String.class, url, new MultivaluedMapImpl());
     }
 
     private <T> T executeCall(HttpServletRequest req, Class<T> cls, String url) {
+        return executeCall(req,cls,url,new MultivaluedMapImpl());
+    }
+
+    private <T> T executeCall(HttpServletRequest req, Class<T> cls, String url, MultivaluedMap<String, String> query) {
         ClientConfig clientConfig = new DefaultClientConfig();
         clientConfig.getFeatures().put(JSONConfiguration.FEATURE_POJO_MAPPING, Boolean.TRUE);
         Client client = Client.create(clientConfig);
 
-        WebResource r = client.resource("http://localhost:2990/jira/rest/" + url);
+        WebResource r = client.resource("http://localhost:2990/jira/rest/" + url).queryParams(query);
 
         Builder b = r.accept(MediaType.APPLICATION_JSON_TYPE, MediaType.APPLICATION_XML_TYPE);
 
