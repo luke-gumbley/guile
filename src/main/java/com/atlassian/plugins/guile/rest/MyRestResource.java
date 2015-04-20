@@ -6,6 +6,8 @@ import com.atlassian.jira.bc.issue.search.SearchService;
 import com.atlassian.jira.issue.CustomFieldManager;
 import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.issue.MutableIssue;
+import com.atlassian.jira.issue.changehistory.ChangeHistoryItem;
+import com.atlassian.jira.issue.changehistory.ChangeHistoryManager;
 import com.atlassian.jira.issue.fields.CustomField;
 import com.atlassian.jira.issue.search.SearchException;
 import com.atlassian.jira.jql.builder.JqlClauseBuilder;
@@ -46,16 +48,19 @@ public class MyRestResource {
     private final com.atlassian.jira.user.util.UserManager jiraUserManager;
     private final SearchService searchService;
     private final CustomFieldManager fieldManager;
+    private final ChangeHistoryManager historyManager;
 
     public MyRestResource(JiraAuthenticationContext jiraAuthenticationContext, IssueService issueService,
                           SearchService searchService, CustomFieldManager fieldService, UserManager userManager,
-                          com.atlassian.jira.user.util.UserManager jiraUserManager) {
+                          com.atlassian.jira.user.util.UserManager jiraUserManager,
+                          ChangeHistoryManager historyManager) {
         this.issueService = issueService;
         this.searchService = searchService;
         this.jiraAuthenticationContext = jiraAuthenticationContext;
         this.userManager = userManager;
         this.jiraUserManager = jiraUserManager;
         this.fieldManager = fieldService;
+        this.historyManager = historyManager;
     }
 
     @GET
@@ -143,6 +148,42 @@ public class MyRestResource {
         SprintModel[] sprints = executeCall(request,sprintResponse.class,"greenhopper/1.0/sprintquery/" + id).sprints;
 
         return Response.ok(new GetSprintsModel(sprints)).build();
+    }
+
+    @GET
+    @AnonymousAllowed
+    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+    @Path("issue/{issueId}/changes")
+    public Response getChanges(@Context HttpServletRequest request, @PathParam("issueId") String issueId) {
+        ApplicationUser user = getCurrentUser(request);
+        IssueService.IssueResult result = issueService.getIssue(user.getDirectoryUser(), issueId);
+
+        Hashtable<String, ArrayList<ChangeModel>> changes = new Hashtable<String, ArrayList<ChangeModel>>();
+
+        if(result != null) {
+            MutableIssue issue = result.getIssue();
+
+            List<ChangeHistoryItem> changeItems = historyManager.getAllChangeItems(issue);
+            for(ChangeHistoryItem change:changeItems) {
+                ChangeModel c = new ChangeModel(change.getCreated(),
+                        change.getUserKey(),
+                        change.getField(),
+                        change.getTos().values().size() > 0 ? change.getTos().values().iterator().next() : "");
+
+                if(!changes.containsKey(c.getField())) {
+                    ArrayList<ChangeModel> original = new ArrayList<ChangeModel>();
+                    original.add(new ChangeModel(issue.getCreated(),
+                            issue.getCreatorId(),
+                            change.getField(),
+                            change.getFroms().values().size() > 0 ? change.getFroms().values().iterator().next() : ""));
+                    changes.put(c.getField(), original);
+                }
+
+                changes.get(c.getField()).add(c);
+            }
+        }
+
+        return Response.ok(new GetChangesModel(changes)).build();
     }
 
     @GET
