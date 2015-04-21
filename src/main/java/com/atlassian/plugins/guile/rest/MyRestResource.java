@@ -6,9 +6,10 @@ import com.atlassian.jira.bc.issue.search.SearchService;
 import com.atlassian.jira.issue.CustomFieldManager;
 import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.issue.MutableIssue;
-import com.atlassian.jira.issue.changehistory.ChangeHistoryItem;
+import com.atlassian.jira.issue.changehistory.ChangeHistory;
 import com.atlassian.jira.issue.changehistory.ChangeHistoryManager;
 import com.atlassian.jira.issue.fields.CustomField;
+import com.atlassian.jira.issue.history.ChangeItemBean;
 import com.atlassian.jira.issue.search.SearchException;
 import com.atlassian.jira.jql.builder.JqlClauseBuilder;
 import com.atlassian.jira.jql.builder.JqlQueryBuilder;
@@ -25,6 +26,7 @@ import javax.ws.rs.core.Context;
 import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
+import java.sql.Timestamp;
 import java.util.*;
 
 import com.sun.jersey.api.client.*;
@@ -154,7 +156,7 @@ public class MyRestResource {
     @AnonymousAllowed
     @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
     @Path("issue/{issueId}/changes")
-    public Response getChanges(@Context HttpServletRequest request, @PathParam("issueId") String issueId) {
+    public Response getChanges(@Context HttpServletRequest request, @PathParam("issueId") String issueId, @DefaultValue("1970-01-01 00:00:00") @QueryParam("since") Timestamp since) {
         ApplicationUser user = getCurrentUser(request);
         IssueService.IssueResult result = issueService.getIssue(user.getDirectoryUser(), issueId);
 
@@ -162,25 +164,35 @@ public class MyRestResource {
 
         if(result != null) {
             MutableIssue issue = result.getIssue();
+            ArrayList<ChangeHistory> histories = new ArrayList<ChangeHistory>(historyManager.getChangeHistoriesSince(issue, since));
 
-            List<ChangeHistoryItem> changeItems = historyManager.getAllChangeItems(issue);
-            for(ChangeHistoryItem change:changeItems) {
-                ChangeModel c = new ChangeModel(change.getCreated(),
-                        change.getUserKey(),
-                        change.getField(),
-                        change.getTos().values().size() > 0 ? change.getTos().values().iterator().next() : "");
-
-                if(!changes.containsKey(c.getField())) {
-                    ArrayList<ChangeModel> original = new ArrayList<ChangeModel>();
-                    original.add(new ChangeModel(issue.getCreated(),
-                            issue.getCreatorId(),
-                            change.getField(),
-                            change.getFroms().values().size() > 0 ? change.getFroms().values().iterator().next() : ""));
-                    changes.put(c.getField(), original);
+            Collections.sort(histories, new Comparator<ChangeHistory>() {
+                @Override
+                public int compare(ChangeHistory o1, ChangeHistory o2) {
+                    return o1.getTimePerformed().compareTo(o2.getTimePerformed());
                 }
+            });
 
-                changes.get(c.getField()).add(c);
+            for(ChangeHistory history:histories) {
+                for(ChangeItemBean change:history.getChangeItemBeans()) {
+                    ChangeModel c = new ChangeModel(change.getCreated(),
+                            history.getAuthorObject().getKey(),
+                            change.getField(),
+                            change.getTo());
+
+                    if(!changes.containsKey(c.getField())) {
+                        ArrayList<ChangeModel> original = new ArrayList<ChangeModel>();
+                        original.add(new ChangeModel(issue.getCreated(),
+                                issue.getCreatorId(),
+                                change.getField(),
+                                change.getFrom()));
+                        changes.put(c.getField(), original);
+                    }
+
+                    changes.get(c.getField()).add(c);
+                }
             }
+
         }
 
         return Response.ok(new GetChangesModel(changes)).build();

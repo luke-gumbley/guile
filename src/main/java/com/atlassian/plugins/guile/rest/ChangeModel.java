@@ -19,7 +19,7 @@ public class ChangeModel {
         this.date=date;
         this.user=user;
         this.field=field;
-        this.value=value;
+        this.value=value == null ? "" : value;
     }
 
     @XmlElement(name = "date")
