@@ -1,0 +1,2 @@
+//mephistopheles
+(function() {alert('testopheles');})()
