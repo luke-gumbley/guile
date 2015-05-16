@@ -15,6 +15,7 @@
             </Param>
         </Optional>
         <Require feature="setprefs"/>
+        <Require feature="oauthpopup" />
         #supportedLocales("${MODULE_KEY}")
     </ModulePrefs>
     <UserPref name="isConfigured" datatype="hidden" default_value="false"/>
@@ -23,8 +24,19 @@
             #requireResource("com.atlassian.jira.gadgets:jira-global")
             #requireResource("com.atlassian.plugins.guile.Guile:guile-resources")
             #includeResources()
-            Hello Chums!
-        </script>
+            <script>
+                var gadget = AJS.Gadget({
+                    baseUrl: "__ATLASSIAN_BASE_URL__",
+                    useOauth: "/rest/gadget/1.0/currentUser",
+                    view: {
+                        enableReload: true,
+                        onResizeReload: false,
+                        onResizeAdjustHeight: false,
+                        template: GADGET.template,
+                        args: []
+                    }
+                });
+            </script>
         ]]>
     </Content>
 </Module>
