@@ -13,6 +13,7 @@
   <!-- add our web resources -->
   <web-resource key="guile-resources" name="Guile Web Resources">
     <dependency>com.atlassian.auiplugin:ajs</dependency>
+    <resource type="download" name="jquery.svg.js" location="js/jquery.svg.js" />
     <resource type="download" name="Guile.css" location="/css/Guile.css"/>
     <resource type="download" name="Guile.js" location="/js/Guile.js"/>
     <resource type="download" name="images/" location="/images"/>
