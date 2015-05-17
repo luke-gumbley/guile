@@ -14,26 +14,38 @@
                 JIRA
             </Param>
         </Optional>
-        <Require feature="setprefs"/>
+        <Require feature="setprefs" />
+        <Require feature="views" />
+        <Require feature="dynamic-height" />
         <Require feature="oauthpopup" />
-        #supportedLocales("${MODULE_KEY}")
+        #oauth
+        <Optional feature="atlassian.util"/>
+        #supportedLocales("gadget.common,${MODULE_KEY}")
     </ModulePrefs>
     <UserPref name="isConfigured" datatype="hidden" default_value="false"/>
+    <UserPref name="refresh" datatype="hidden" default_value="false" />
+    <UserPref name="board" datatype="hidden" />
     <Content type="html" view="profile">
         <![CDATA[
-            #requireResource("com.atlassian.jira.gadgets:jira-global")
+            #requireResource("com.atlassian.jira.gadgets:common")
             #requireResource("com.atlassian.plugins.guile.Guile:guile-resources")
             #includeResources()
             <script>
                 var gadget = AJS.Gadget({
                     baseUrl: "__ATLASSIAN_BASE_URL__",
                     useOauth: "/rest/gadget/1.0/currentUser",
+                    config: {
+                        descriptor: GADGET.descriptor,
+                        args: [{
+                            key: "rapidview",
+                            ajaxOptions: '/rest/greenhopper/1.0/rapidview'
+                        }]
+                    },
                     view: {
                         enableReload: true,
-                        onResizeReload: false,
-                        onResizeAdjustHeight: false,
+                        onResizeReload: true,
+                        onResizeAdjustHeight: true,
                         template: GADGET.template,
-                        args: []
                     }
                 });
             </script>
