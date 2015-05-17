@@ -25,6 +25,7 @@
     <UserPref name="isConfigured" datatype="hidden" default_value="false"/>
     <UserPref name="refresh" datatype="hidden" default_value="false" />
     <UserPref name="board" datatype="hidden" />
+    <UserPref name="sprint" datatype="hidden" />
     <Content type="html" view="profile">
         <![CDATA[
             #requireResource("com.atlassian.jira.gadgets:common")
