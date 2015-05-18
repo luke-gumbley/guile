@@ -1,4 +1,6 @@
 GADGET = {
+    initialized: false,
+
     ajax: function(settings) {
         var deferred = AJS.$.Deferred();
         settings.success = function() {deferred.resolveWith(this,arguments);};
@@ -8,7 +10,18 @@ GADGET = {
 
     template: function (args) {
         var gadget=this;
-        gadget.getView().svg({onLoad:GADGET.render,settings:{width:'100%',height:'100%'}});
+        var ratioPref = gadget.getPref('aspectRatio').split(':')
+        var ratio = ratioPref[0] / ratioPref[1];
+        var view = gadget.getView();
+        var width = view.width();
+        if(!GADGET.initialized) {
+            view.svg({ onLoad: GADGET.render, settings: { width: width, height: width/ratio }});
+            GADGET.initialized = true;
+        } else {
+            GADGET.render(view.svg('get')
+                .clear()
+                .configure({width: width, height: width/ratio}));
+        }
     },
 
     updateSprintList: function(boardId, sprintFieldId) {
@@ -62,6 +75,11 @@ GADGET = {
                         GADGET.updateSprintList(boardId, sprintFieldId)
                     });
                }
+            }, {
+                userpref: 'aspectRatio',
+                label: 'Aspect Ratio',
+                type: 'text',
+                value: gadget.getPref('aspectRatio')
             },
             AJS.gadget.fields.nowConfigured()]
         };
