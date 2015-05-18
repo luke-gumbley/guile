@@ -18,19 +18,15 @@ GADGET = {
                 includeFutureSprints: false
             },
             contentType: 'application/json',
-            success: function(xhr) {
-                var selectedSprint = gadget.getPref('sprint');
+            success: function(response) {
+                var options=AJS.$.map(response.sprints, function(sprint) {
+                    return AJS.$("<option/>").attr("value", sprint.id).text(sprint.name).get();
+                });
 
-                var sprintField = AJS.$('#' + sprintFieldId);
-                sprintField.empty();
-
-                sprintField.append(xhr.sprints.map(function(sprint) {
-                    var sprintOption = AJS.$("<option/>").attr("value", sprint.id).text(sprint.name);
-                    if(selectedSprint == sprint.id) {
-                        sprintOption.attr("selected", "selected");
-                    }
-                    return sprintOption[0];
-                }));
+                AJS.$('#' + sprintFieldId)
+                    .empty()
+                    .append(options)
+                    .val(gadget.getPref('sprint'))
             }
         });
     },
@@ -45,8 +41,7 @@ GADGET = {
                 label: 'Board',
                 type: "select",
                 selected: gadget.getPref("board"),
-                //args.rapidview.views
-                options: [{name:'one',id:1},{name:'two',id:2}].map(function(board) {return {label:board.name,value:board.id};})
+                options: args.rapidview.views.map(function(board) {return {label:board.name,value:board.id};})
             }, {
                 id: 'sprint-parent',
                 userpref: 'sprint',
