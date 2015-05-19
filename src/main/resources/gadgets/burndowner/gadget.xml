@@ -48,6 +48,7 @@
                         onResizeReload: true,
                         onResizeAdjustHeight: true,
                         template: GADGET.template,
+                        args: GADGET.templateArgs
                     }
                 });
             </script>

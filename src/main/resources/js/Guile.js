@@ -8,6 +8,17 @@ GADGET = {
         return deferred.promise(AJS.$.ajax(settings));
     },
 
+    templateArgs: [{
+        key: 'sprintData',
+        ajaxOptions: function() {
+            return {
+                url: '/rest/greenhopper/1.0/sprint/' + this.getPref('sprint') + '/edit/model',
+                contentType: 'application/json'
+            };
+        }
+    },{
+    }],
+
     template: function (args) {
         var gadget=this;
         var ratioPref = gadget.getPref('aspectRatio').split(':')
@@ -15,12 +26,15 @@ GADGET = {
         var view = gadget.getView();
         var width = view.width();
         if(!GADGET.initialized) {
-            view.svg({ onLoad: GADGET.render, settings: { width: width, height: width/ratio }});
+            view.svg({
+                onLoad: function(svg) { GADGET.render(svg,args); },
+                settings: { width: width, height: width/ratio }
+            });
             GADGET.initialized = true;
         } else {
             GADGET.render(view.svg('get')
                 .clear()
-                .configure({width: width, height: width/ratio}));
+                .configure({width: width, height: width/ratio}), args);
         }
     },
 
@@ -85,7 +99,7 @@ GADGET = {
         };
     },
 
-    render: function(svg) {
+    render: function(svg, args) {
         svg.polyline([[20,20],[40,25],[60,40],[80,120],[120,140],[200,180]], {fill: 'none', stroke: 'black', strokeWidth: 3});
     }
 };
