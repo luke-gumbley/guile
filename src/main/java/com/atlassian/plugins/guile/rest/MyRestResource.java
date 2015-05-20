@@ -152,13 +152,9 @@ public class MyRestResource {
         return Response.ok(new GetSprintsModel(sprints)).build();
     }
 
-    @GET
-    @AnonymousAllowed
-    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
-    @Path("issue/{issueId}/changes")
-    public Response getChanges(@Context HttpServletRequest request, @PathParam("issueId") String issueId, @DefaultValue("1970-01-01 00:00:00") @QueryParam("since") Timestamp since) {
-        ApplicationUser user = getCurrentUser(request);
-        IssueService.IssueResult result = issueService.getIssue(user.getDirectoryUser(), issueId);
+    private Hashtable<String, ArrayList<ChangeModel>> getIssueChanges(User user, String issueId, Timestamp since, List<String> fields) {
+        IssueService.IssueResult result = issueService.getIssue(user, issueId);
+        fields = fields == null ? new ArrayList<String>() : fields;
 
         Hashtable<String, ArrayList<ChangeModel>> changes = new Hashtable<String, ArrayList<ChangeModel>>();
 
@@ -175,27 +171,51 @@ public class MyRestResource {
 
             for(ChangeHistory history:histories) {
                 for(ChangeItemBean change:history.getChangeItemBeans()) {
+                    String field = change.getField();
+                    if(fields.size() > 0 && !fields.contains(field)) continue;
+
                     ChangeModel c = new ChangeModel(change.getCreated(),
                             history.getAuthorObject().getKey(),
-                            change.getField(),
                             change.getTo());
 
-                    if(!changes.containsKey(c.getField())) {
-                        ArrayList<ChangeModel> original = new ArrayList<ChangeModel>();
-                        original.add(new ChangeModel(issue.getCreated(),
-                                issue.getCreatorId(),
-                                change.getField(),
-                                change.getFrom()));
-                        changes.put(c.getField(), original);
+                    // If this is the first change logged for this field, add the previous field value
+                    // timestamped at the later of the issue creation date or the 'since' parameter
+                    if(!changes.containsKey(field)) {
+                        ArrayList<ChangeModel> originalChange = new ArrayList<ChangeModel>();
+                        Timestamp originalTime = issue.getCreated().compareTo(since) > 0 ? issue.getCreated() : since;
+                        // if 'since' has been defined, note that the previous change may not have been by the creator.
+                        originalChange.add(new ChangeModel(originalTime, issue.getCreatorId(), change.getFrom()));
+                        changes.put(field, originalChange);
                     }
 
-                    changes.get(c.getField()).add(c);
+                    changes.get(field).add(c);
                 }
             }
 
+            // Add current values for all fields unchanged over that time period.
+            List<String> unchanged = new ArrayList<String>(fields);
+            unchanged.removeAll(changes.keySet());
+            for(String field:unchanged) {
+                ArrayList<ChangeModel> originalChange = new ArrayList<ChangeModel>();
+                Timestamp originalTime = issue.getCreated().compareTo(since) > 0 ? issue.getCreated() : since;
+                // TODO: getExternalFieldValue does not work on built-in fields. Examine FieldManager and Field class for clues.
+                Object val = issue.getExternalFieldValue(field);
+                // if 'since' has been defined, note that the previous change may not have been by the creator.
+                originalChange.add(new ChangeModel(originalTime, issue.getCreatorId(), val == null ? "" : val.toString()));
+                changes.put(field, originalChange);
+            }
         }
 
-        return Response.ok(new GetChangesModel(changes)).build();
+        return changes;
+    }
+
+    @GET
+    @AnonymousAllowed
+    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+    @Path("issue/{issueId}/changes")
+    public Response getChanges(@Context HttpServletRequest request, @PathParam("issueId") String issueId, @DefaultValue("1970-01-01 00:00:00") @QueryParam("since") Timestamp since) {
+        ApplicationUser user = getCurrentUser(request);
+        return Response.ok(new GetChangesModel(getIssueChanges(user.getDirectoryUser(), issueId, since, null))).build();
     }
 
     @GET
@@ -215,6 +235,37 @@ public class MyRestResource {
         Collections.addAll(issues,response.contents.puntedIssues);
 
         return Response.ok(new GetSprintIssuesModel(issues.toArray(new IssueModel[issues.size()]))).build();
+    }
+
+    @GET
+    @AnonymousAllowed
+    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+    @Path("boards/{boardId}/sprints/{sprintId}/changes")
+    public Response getSprintChanges(@Context HttpServletRequest request, @PathParam("boardId") long boardId, @PathParam("sprintId") long sprintId, @DefaultValue("1970-01-01 00:00:00") @QueryParam("since") Timestamp since, @QueryParam("fields") List<String> fields) {
+        MultivaluedMap<String, String> query = new MultivaluedMapImpl();
+        query.add("rapidViewId",Long.toString(boardId));
+        query.add("sprintId",Long.toString(sprintId));
+
+        sprintIssueResponse response = executeCall(request, sprintIssueResponse.class, "greenhopper/1.0/rapid/charts/sprintreport",query);
+
+        ArrayList<IssueModel> issues = new ArrayList<IssueModel>();
+        Collections.addAll(issues,response.contents.completedIssues);
+        Collections.addAll(issues,response.contents.incompletedIssues);
+        Collections.addAll(issues,response.contents.puntedIssues);
+
+        Map<String, Map<String, ArrayList<ChangeModel>>> changes = new Hashtable<String, Map<String, ArrayList<ChangeModel>>>();
+
+        User user = getCurrentUser(request).getDirectoryUser();
+        for(IssueModel issue:issues) {
+            Hashtable<String, ArrayList<ChangeModel>> issueChanges = getIssueChanges(user,issue.getKey(),since,fields);
+            for(String field: issueChanges.keySet()) {
+                if(!changes.containsKey(field))
+                    changes.put(field,new Hashtable<String, ArrayList<ChangeModel>>());
+                changes.get(field).put(issue.getKey(),issueChanges.get(field));
+            }
+        }
+
+        return Response.ok(new GetSprintChangesModel(changes)).build();
     }
 
     private String executeCall(HttpServletRequest req, String url) {

@@ -15,10 +15,9 @@ public class ChangeModel {
 
     public ChangeModel() {}
 
-    public ChangeModel(Timestamp date, String user, String field, String value) {
+    public ChangeModel(Timestamp date, String user, String value) {
         this.date=date;
         this.user=user;
-        this.field=field;
         this.value=value == null ? "" : value;
     }
 
@@ -31,11 +30,6 @@ public class ChangeModel {
     private String user;
     public String getUser() { return user; }
     public void setUser(String user) { this.user = user; }
-
-    @XmlElement(name = "field")
-    private String field;
-    public String getField() { return field; }
-    public void setField(String field) { this.field = field; }
 
     @XmlElement(name = "value")
     private String value;
