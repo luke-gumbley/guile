@@ -17,6 +17,16 @@ GADGET = {
             };
         }
     },{
+        key: 'issueData',
+        ajaxOptions: function() {
+            return {
+                url: '/rest/guile/1.0/boards/' + this.getPref('board') + '/sprints/' + this.getPref('sprint') + '/changes',
+                data: {
+                    fields: ['timeestimate','timespent']
+                },
+                contentType: 'application/json'
+            };
+        }
     }],
 
     template: function (args) {
@@ -100,6 +110,22 @@ GADGET = {
     },
 
     render: function(svg, args) {
+        var start = new Date(args.sprintData.sprint.startDate).getTime();
+        var end = new Date(args.sprintData.sprint.endDate).getTime();
+
+        var estimates = args.issueData.changes.timeestimate;
+        var events = [];
+        for(issue in estimates) {
+            var current = 0;
+            estimates[issue].forEach(function(event) {
+                event.delta = event.value - current;
+                event.issue = issue;
+                current = event.value;
+            });
+            events = events.concat(estimates[issue]);
+        }
+        events.sort(function(a,b) {return a.date - b.date;});
+
         svg.polyline([[20,20],[40,25],[60,40],[80,120],[120,140],[200,180]], {fill: 'none', stroke: 'black', strokeWidth: 3});
     }
 };

@@ -160,6 +160,7 @@ public class MyRestResource {
 
         if(result != null) {
             MutableIssue issue = result.getIssue();
+            // TODO: investigate the potential for using historyManager.getChangeHistoriesForUser
             ArrayList<ChangeHistory> histories = new ArrayList<ChangeHistory>(historyManager.getChangeHistoriesSince(issue, since));
 
             Collections.sort(histories, new Comparator<ChangeHistory>() {
