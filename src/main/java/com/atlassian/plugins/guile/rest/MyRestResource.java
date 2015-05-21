@@ -53,7 +53,7 @@ public class MyRestResource {
     private final ChangeHistoryManager historyManager;
 
     public MyRestResource(JiraAuthenticationContext jiraAuthenticationContext, IssueService issueService,
-                          SearchService searchService, CustomFieldManager fieldService, UserManager userManager,
+                          SearchService searchService, CustomFieldManager fieldManager, UserManager userManager,
                           com.atlassian.jira.user.util.UserManager jiraUserManager,
                           ChangeHistoryManager historyManager) {
         this.issueService = issueService;
@@ -61,7 +61,7 @@ public class MyRestResource {
         this.jiraAuthenticationContext = jiraAuthenticationContext;
         this.userManager = userManager;
         this.jiraUserManager = jiraUserManager;
-        this.fieldManager = fieldService;
+        this.fieldManager = fieldManager;
         this.historyManager = historyManager;
     }
 
@@ -198,8 +198,8 @@ public class MyRestResource {
             for(String field:unchanged) {
                 ArrayList<ChangeModel> originalChange = new ArrayList<ChangeModel>();
                 Timestamp originalTime = issue.getCreated().compareTo(since) > 0 ? issue.getCreated() : since;
-                // TODO: getExternalFieldValue does not work on built-in fields. Examine FieldManager and Field class for clues.
-                Object val = issue.getExternalFieldValue(field);
+                // Note: In my view this was deprecated in error, you should be able to retrieve system field values by name.
+                Object val = issue.getString(field);
                 // if 'since' has been defined, note that the previous change may not have been by the creator.
                 originalChange.add(new ChangeModel(originalTime, issue.getCreatorId(), val == null ? "" : val.toString()));
                 changes.put(field, originalChange);
