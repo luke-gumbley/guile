@@ -1,7 +1,7 @@
 package com.atlassian.plugins.guile.rest;
 
 import com.atlassian.crowd.embedded.api.User;
-import com.atlassian.jira.bc.issue.IssueService;
+import com.atlassian.jira.issue.IssueManager;
 import com.atlassian.jira.bc.issue.search.SearchService;
 import com.atlassian.jira.issue.CustomFieldManager;
 import com.atlassian.jira.issue.Issue;
@@ -44,7 +44,7 @@ import org.codehaus.jackson.annotate.JsonProperty;
 @Path("/")
 public class MyRestResource {
 
-    private final IssueService issueService;
+    private final IssueManager issueManager;
     private final JiraAuthenticationContext jiraAuthenticationContext;
     private final UserManager userManager;
     private final com.atlassian.jira.user.util.UserManager jiraUserManager;
@@ -52,11 +52,11 @@ public class MyRestResource {
     private final CustomFieldManager fieldManager;
     private final ChangeHistoryManager historyManager;
 
-    public MyRestResource(JiraAuthenticationContext jiraAuthenticationContext, IssueService issueService,
+    public MyRestResource(JiraAuthenticationContext jiraAuthenticationContext, IssueManager issueManager,
                           SearchService searchService, CustomFieldManager fieldManager, UserManager userManager,
                           com.atlassian.jira.user.util.UserManager jiraUserManager,
                           ChangeHistoryManager historyManager) {
-        this.issueService = issueService;
+        this.issueManager = issueManager;
         this.searchService = searchService;
         this.jiraAuthenticationContext = jiraAuthenticationContext;
         this.userManager = userManager;
@@ -71,31 +71,30 @@ public class MyRestResource {
     @Path("message")
     public Response getMessage(@Context HttpServletRequest request) {
         ApplicationUser user = getCurrentUser(request);
-        IssueService.IssueResult result = issueService.getIssue(user.getDirectoryUser(), "MOB-1");
+
+
         String output = "request was " + request.getMethod();
         output += " user is " + userManager.getRemoteUsername(request);
 
-        if(result != null) {
-            MutableIssue issue = result.getIssue();
-            output += " description is " + issue.getDescription();
+        MutableIssue issue = issueManager.getIssueObject("MOB-1");
 
-        }
-        else
-            output += " issue is null";
+        output += issue != null
+            ? " description is " + issue.getDescription()
+            : " issue is null";
 
         CustomField sprint = fieldManager.getCustomFieldObjectByName("Sprint");
         if(sprint != null)
             output += " SPRINT ID IS (" + sprint.getIdAsLong() + ")";
 
         List<Issue> issues = getIssues(request);
-        if(issues != null)
+        if(issues != null) {
             output += " "  + issues.size() + " issue(s) in project ";
+            for(Issue i:issues) {
+                output += " " + i.getKey() + ":" + i.getCustomFieldValue(sprint);
+            }
+        }
         else
             output += " unable to get list of project issues";
-
-        for(Issue i:issues) {
-            output += " " + i.getKey() + ":" + i.getCustomFieldValue(sprint);
-        }
 
         issues = getSprintIssues(user.getDirectoryUser(),"MOB","Sprint 1");
         if(issues != null)
@@ -152,16 +151,15 @@ public class MyRestResource {
         return Response.ok(new GetSprintsModel(sprints)).build();
     }
 
-    private Hashtable<String, ArrayList<ChangeModel>> getIssueChanges(User user, String issueId, Timestamp since, List<String> fields) {
-        IssueService.IssueResult result = issueService.getIssue(user, issueId);
+    private Map<String, List<ChangeModel>> getIssueChanges(User user, String issueId, Timestamp since, List<String> fields) {
+        MutableIssue issue = issueManager.getIssueObject(issueId);
         fields = fields == null ? new ArrayList<String>() : fields;
 
-        Hashtable<String, ArrayList<ChangeModel>> changes = new Hashtable<String, ArrayList<ChangeModel>>();
+        Map<String, List<ChangeModel>> changes = new Hashtable<>();
 
-        if(result != null) {
-            MutableIssue issue = result.getIssue();
+        if(issue != null) {
             // TODO: investigate the potential for using historyManager.getChangeHistoriesForUser
-            ArrayList<ChangeHistory> histories = new ArrayList<ChangeHistory>(historyManager.getChangeHistoriesSince(issue, since));
+            List<ChangeHistory> histories = new ArrayList<>(historyManager.getChangeHistoriesSince(issue, since));
 
             Collections.sort(histories, new Comparator<ChangeHistory>() {
                 @Override
@@ -182,7 +180,7 @@ public class MyRestResource {
                     // If this is the first change logged for this field, add the previous field value
                     // timestamped at the later of the issue creation date or the 'since' parameter
                     if(!changes.containsKey(field)) {
-                        ArrayList<ChangeModel> originalChange = new ArrayList<ChangeModel>();
+                        List<ChangeModel> originalChange = new ArrayList<>();
                         Timestamp originalTime = issue.getCreated().compareTo(since) > 0 ? issue.getCreated() : since;
                         // if 'since' has been defined, note that the previous change may not have been by the creator.
                         originalChange.add(new ChangeModel(originalTime, issue.getCreatorId(), change.getFrom()));
@@ -194,10 +192,10 @@ public class MyRestResource {
             }
 
             // Add current values for all fields unchanged over that time period.
-            List<String> unchanged = new ArrayList<String>(fields);
+            List<String> unchanged = new ArrayList<>(fields);
             unchanged.removeAll(changes.keySet());
             for(String field:unchanged) {
-                ArrayList<ChangeModel> originalChange = new ArrayList<ChangeModel>();
+                List<ChangeModel> originalChange = new ArrayList<>();
                 Timestamp originalTime = issue.getCreated().compareTo(since) > 0 ? issue.getCreated() : since;
                 // Note: In my view this was deprecated in error, you should be able to retrieve system field values by name.
                 Object val = issue.getString(field);
@@ -219,22 +217,40 @@ public class MyRestResource {
         return Response.ok(new GetChangesModel(getIssueChanges(user.getDirectoryUser(), issueId, since, null))).build();
     }
 
-    @GET
-    @AnonymousAllowed
-    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
-    @Path("boards/{boardId}/sprints/{sprintId}/issues")
-    public Response getSprintIssues(@Context HttpServletRequest request, @PathParam("boardId") long boardId, @PathParam("sprintId") long sprintId) {
+    private List<IssueModel> getSprintIssues(HttpServletRequest request, long boardId, long sprintId, boolean includeTasks) {
         MultivaluedMap<String, String> query = new MultivaluedMapImpl();
         query.add("rapidViewId",Long.toString(boardId));
         query.add("sprintId",Long.toString(sprintId));
 
         sprintIssueResponse response = executeCall(request, sprintIssueResponse.class, "greenhopper/1.0/rapid/charts/sprintreport",query);
 
-        ArrayList<IssueModel> issues = new ArrayList<IssueModel>();
+        List<IssueModel> issues = new ArrayList<>();
         Collections.addAll(issues,response.contents.completedIssues);
         Collections.addAll(issues,response.contents.incompletedIssues);
         Collections.addAll(issues,response.contents.puntedIssues);
+        // Sigh, JIRA does not support JDK 8 plugins yet.
+        //List<Long> ids=issues.stream().map(x -> x.getId()).collect(Collectors.toList());
+        List<Long> ids = new ArrayList<>();
+        for(IssueModel issue: issues) { ids.add(issue.getId()); }
 
+        if(includeTasks) {
+            List<Issue> issueObjects = issueManager.getIssueObjects(ids);
+            for(Issue issue: issueObjects) {
+                Collection<Issue> subTasks = issue.getSubTaskObjects();
+                for(Issue subTask: subTasks) {
+                    issues.add(new IssueModel(subTask.getId(),subTask.getKey()));
+                }
+            }
+        }
+        return issues;
+    }
+
+    @GET
+    @AnonymousAllowed
+    @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+    @Path("boards/{boardId}/sprints/{sprintId}/issues")
+    public Response getSprintIssues(@Context HttpServletRequest request, @PathParam("boardId") long boardId, @PathParam("sprintId") long sprintId) {
+        List<IssueModel> issues = getSprintIssues(request, boardId, sprintId, true);
         return Response.ok(new GetSprintIssuesModel(issues.toArray(new IssueModel[issues.size()]))).build();
     }
 
@@ -243,25 +259,16 @@ public class MyRestResource {
     @Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
     @Path("boards/{boardId}/sprints/{sprintId}/changes")
     public Response getSprintChanges(@Context HttpServletRequest request, @PathParam("boardId") long boardId, @PathParam("sprintId") long sprintId, @DefaultValue("1970-01-01 00:00:00") @QueryParam("since") Timestamp since, @QueryParam("fields") List<String> fields) {
-        MultivaluedMap<String, String> query = new MultivaluedMapImpl();
-        query.add("rapidViewId",Long.toString(boardId));
-        query.add("sprintId",Long.toString(sprintId));
+        List<IssueModel> issues = getSprintIssues(request, boardId, sprintId, true);
 
-        sprintIssueResponse response = executeCall(request, sprintIssueResponse.class, "greenhopper/1.0/rapid/charts/sprintreport",query);
-
-        ArrayList<IssueModel> issues = new ArrayList<IssueModel>();
-        Collections.addAll(issues,response.contents.completedIssues);
-        Collections.addAll(issues,response.contents.incompletedIssues);
-        Collections.addAll(issues,response.contents.puntedIssues);
-
-        Map<String, Map<String, ArrayList<ChangeModel>>> changes = new Hashtable<String, Map<String, ArrayList<ChangeModel>>>();
+        Map<String, Map<String, List<ChangeModel>>> changes = new Hashtable<>();
 
         User user = getCurrentUser(request).getDirectoryUser();
         for(IssueModel issue:issues) {
-            Hashtable<String, ArrayList<ChangeModel>> issueChanges = getIssueChanges(user,issue.getKey(),since,fields);
+            Map<String, List<ChangeModel>> issueChanges = getIssueChanges(user,issue.getKey(),since,fields);
             for(String field: issueChanges.keySet()) {
                 if(!changes.containsKey(field))
-                    changes.put(field,new Hashtable<String, ArrayList<ChangeModel>>());
+                    changes.put(field,new Hashtable<String, List<ChangeModel>>());
                 changes.get(field).put(issue.getKey(),issueChanges.get(field));
             }
         }
@@ -302,12 +309,13 @@ public class MyRestResource {
         com.atlassian.query.Query query = jqlClauseBuilder.project("MOB").buildQuery();
         PagerFilter pagerFilter = PagerFilter.getUnlimitedFilter();
         com.atlassian.jira.issue.search.SearchResults searchResults = null;
+        List<Issue> issues = new ArrayList<>();
         try {
-            searchResults = searchService.search(user, query, pagerFilter);
+            issues = searchService.search(user, query, pagerFilter).getIssues();
         } catch (SearchException e) {
             e.printStackTrace();
         }
-        return searchResults.getIssues();
+        return issues;
     }
 
     private List<Issue> getSprintIssues(User user, String project, String sprint) {
@@ -318,13 +326,13 @@ public class MyRestResource {
                 .and().project(project).buildQuery();
 
         PagerFilter pagerFilter = PagerFilter.getUnlimitedFilter();
-        com.atlassian.jira.issue.search.SearchResults searchResults = null;
+        List<Issue> issues = new ArrayList<>();
         try {
-            searchResults = searchService.search(user, query, pagerFilter);
+            issues = searchService.search(user, query, pagerFilter).getIssues();
         } catch (SearchException e) {
             e.printStackTrace();
         }
-        return searchResults.getIssues();
+        return issues;
     }
 
     private ApplicationUser getCurrentUser(HttpServletRequest req) {

@@ -138,7 +138,6 @@
                 <configuration>
                     <productVersion>${jira.version}</productVersion>
                     <productDataVersion>${jira.version}</productDataVersion>
-                    <jvmArgs>-Xmx512m -XX:MaxPermSize=512m</jvmArgs>
                     <!-- Uncomment to install TestKit backdoor in JIRA. -->
                     <!--
 					<pluginArtifacts>
@@ -155,14 +154,14 @@
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.3</version>
                 <configuration>
-                    <source>1.6</source>
-                    <target>1.6</target>
+                    <source>1.7</source>
+                    <target>1.7</target>
                 </configuration>
             </plugin>
         </plugins>
     </build>
     <properties>
-        <jira.version>6.3.14</jira.version>
+        <jira.version>6.4.4</jira.version>
         <amps.version>5.0.13</amps.version>
         <plugin.testrunner.version>1.2.3</plugin.testrunner.version>
         <!-- TestKit version 5.x for JIRA 5.x, 6.x for JIRA 6.x -->
