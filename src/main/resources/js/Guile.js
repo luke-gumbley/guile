@@ -126,6 +126,40 @@ GADGET = {
         }
         events.sort(function(a,b) {return a.date - b.date;});
 
-        svg.polyline([[20,20],[40,25],[60,40],[80,120],[120,140],[200,180]], {fill: 'none', stroke: 'black', strokeWidth: 3});
+        var left = 20;
+        var top = 20;
+        var right = svg.width() - 40;
+        var bottom = svg.height() - 40;
+
+        var max = 0;
+        var total = 0;
+
+        events.forEach(function(event) {
+            total += event.delta;
+            if(total > max) max = total;
+        });
+
+        var xScale = (right - left) / (end - start);
+        var yScale = (top - bottom) / max;
+
+        var points = [];
+
+        var y = 0;
+        events.forEach(function(event) {
+            if(event.date > start) {
+                if(points.length === 0)
+                    points = points.concat([[0, y]]);
+                var x = event.date - start;
+                points = points.concat([[x, y], [x, y + event.delta]]);
+            }
+            y += event.delta;
+        })
+
+        points.forEach(function(point) {
+            point[0] = point[0] * xScale + left;
+            point[1] = point[1] * yScale + bottom;
+        });
+
+        svg.polyline(points, {fill: 'none', stroke: 'black', strokeWidth: 3});
     }
 };
