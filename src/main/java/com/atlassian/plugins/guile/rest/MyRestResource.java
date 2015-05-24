@@ -8,7 +8,9 @@ import com.atlassian.jira.issue.Issue;
 import com.atlassian.jira.issue.MutableIssue;
 import com.atlassian.jira.issue.changehistory.ChangeHistory;
 import com.atlassian.jira.issue.changehistory.ChangeHistoryManager;
+import com.atlassian.jira.issue.customfields.CustomFieldType;
 import com.atlassian.jira.issue.fields.CustomField;
+import com.atlassian.jira.issue.fields.FieldManager;
 import com.atlassian.jira.issue.history.ChangeItemBean;
 import com.atlassian.jira.issue.search.SearchException;
 import com.atlassian.jira.jql.builder.JqlClauseBuilder;
@@ -49,18 +51,20 @@ public class MyRestResource {
     private final UserManager userManager;
     private final com.atlassian.jira.user.util.UserManager jiraUserManager;
     private final SearchService searchService;
-    private final CustomFieldManager fieldManager;
+    private final CustomFieldManager customFieldManager;
+    private final FieldManager fieldManager;
     private final ChangeHistoryManager historyManager;
 
     public MyRestResource(JiraAuthenticationContext jiraAuthenticationContext, IssueManager issueManager,
-                          SearchService searchService, CustomFieldManager fieldManager, UserManager userManager,
-                          com.atlassian.jira.user.util.UserManager jiraUserManager,
+                          SearchService searchService, CustomFieldManager customFieldManager, FieldManager fieldManager,
+                          UserManager userManager, com.atlassian.jira.user.util.UserManager jiraUserManager,
                           ChangeHistoryManager historyManager) {
         this.issueManager = issueManager;
         this.searchService = searchService;
         this.jiraAuthenticationContext = jiraAuthenticationContext;
         this.userManager = userManager;
         this.jiraUserManager = jiraUserManager;
+        this.customFieldManager = customFieldManager;
         this.fieldManager = fieldManager;
         this.historyManager = historyManager;
     }
@@ -82,7 +86,7 @@ public class MyRestResource {
             ? " description is " + issue.getDescription()
             : " issue is null";
 
-        CustomField sprint = fieldManager.getCustomFieldObjectByName("Sprint");
+        CustomField sprint = customFieldManager.getCustomFieldObjectByName("Sprint");
         if(sprint != null)
             output += " SPRINT ID IS (" + sprint.getIdAsLong() + ")";
 
@@ -151,6 +155,69 @@ public class MyRestResource {
         return Response.ok(new GetSprintsModel(sprints)).build();
     }
 
+    private String getCustomFieldValue(CustomField field, Issue issue) {
+        // Horrific. Custom fields are awful. Any other approach leads to more suppression.
+        @SuppressWarnings("unchecked") CustomFieldType<?, Object> fieldType = field.getCustomFieldType();
+        Object val = fieldType.getValueFromIssue(field, issue);
+
+        Collection<Object> values = new ArrayList<>();
+
+        if(Collection.class.isInstance(val)) {
+            //noinspection unchecked Relies on knowledge of the operation of CustomFieldType.
+            values = (Collection<Object>)val;
+        } else if(Map.class.isInstance(val)) {
+            for (Object o : ((Map)val).values()) {
+                if (Collection.class.isInstance(o))
+                    values.addAll((Collection)o);
+                else
+                    values.add(o);
+            }
+        } else if(val != null) {
+            values.add(val);
+        }
+
+        List<String> output = new ArrayList<>();
+        for(Object o: values) {
+            output.add(fieldType.getStringFromSingularObject(o));
+        }
+
+        return output.size() > 0 ? String.join(", ", output) : "";
+    }
+
+    private String getSystemFieldValue(String field, Issue issue) {
+        //noinspection deprecation
+        return field.equals("Parent Issue")
+            ? getParent(issue)
+            // Note: Doesn't work for all fields, only simple fields still using historic storage.
+            // TODO: abstract this and 'fieldIrrelevant' into custom field accessor classes
+            : issue.getString(field);
+    }
+
+    private String getParent(Issue issue) {
+        Issue parent = issue.getParentObject();
+        return parent == null ? "" : parent.getKey();
+    }
+
+    private static Map<Boolean, Collection<String>> fieldIrrelevant = null;
+
+    private static void setupRelevance() {
+        fieldIrrelevant = new HashMap<>();
+        fieldIrrelevant.put(true, new ArrayList<String>());
+        fieldIrrelevant.put(false, new ArrayList<String>());
+
+        // subTask
+        fieldIrrelevant.get(true).add("Sprint");
+
+        // issue
+        fieldIrrelevant.get(false).add("Parent Issue");
+    }
+
+    private static boolean isFieldRelevant(String field, Issue issue) {
+        if(fieldIrrelevant == null) setupRelevance();
+
+        return !fieldIrrelevant.get(issue.isSubTask()).contains(field);
+    }
+
     private Map<String, List<ChangeModel>> getIssueChanges(User user, String issueId, Timestamp since, List<String> fields) {
         MutableIssue issue = issueManager.getIssueObject(issueId);
         fields = fields == null ? new ArrayList<String>() : fields;
@@ -170,12 +237,15 @@ public class MyRestResource {
 
             for(ChangeHistory history:histories) {
                 for(ChangeItemBean change:history.getChangeItemBeans()) {
+                    // Note: Does not necessarily correspond to a system field Id (e.g. "Parent Issue").
                     String field = change.getField();
                     if(fields.size() > 0 && !fields.contains(field)) continue;
 
                     ChangeModel c = new ChangeModel(change.getCreated(),
                             history.getAuthorObject().getKey(),
-                            change.getTo());
+                            // Sometimes getToString has a value but getTo does not.
+                            // Some fields populate both but give different values (e.g. Sprint).
+                            change.getTo() == null ? change.getToString() : change.getTo());
 
                     // If this is the first change logged for this field, add the previous field value
                     // timestamped at the later of the issue creation date or the 'since' parameter
@@ -183,7 +253,7 @@ public class MyRestResource {
                         List<ChangeModel> originalChange = new ArrayList<>();
                         Timestamp originalTime = issue.getCreated().compareTo(since) > 0 ? issue.getCreated() : since;
                         // if 'since' has been defined, note that the previous change may not have been by the creator.
-                        originalChange.add(new ChangeModel(originalTime, issue.getCreatorId(), change.getFrom()));
+                        originalChange.add(new ChangeModel(originalTime, issue.getCreatorId(), change.getFrom() == null ? change.getFromString() : change.getFrom()));
                         changes.put(field, originalChange);
                     }
 
@@ -195,10 +265,15 @@ public class MyRestResource {
             List<String> unchanged = new ArrayList<>(fields);
             unchanged.removeAll(changes.keySet());
             for(String field:unchanged) {
+                if(!isFieldRelevant(field,issue)) continue;
+
+                Collection<CustomField> customFields = customFieldManager.getCustomFieldObjectsByName(field);
+                Object val = !customFields.isEmpty()
+                    ? getCustomFieldValue(customFields.iterator().next(), issue)
+                    : getSystemFieldValue(field,issue);
+
                 List<ChangeModel> originalChange = new ArrayList<>();
                 Timestamp originalTime = issue.getCreated().compareTo(since) > 0 ? issue.getCreated() : since;
-                // Note: In my view this was deprecated in error, you should be able to retrieve system field values by name.
-                Object val = issue.getString(field);
                 // if 'since' has been defined, note that the previous change may not have been by the creator.
                 originalChange.add(new ChangeModel(originalTime, issue.getCreatorId(), val == null ? "" : val.toString()));
                 changes.put(field, originalChange);
@@ -322,7 +397,7 @@ public class MyRestResource {
         JqlClauseBuilder jqlClauseBuilder = JqlQueryBuilder.newClauseBuilder();
 
         com.atlassian.query.Query query = jqlClauseBuilder
-                .customField(fieldManager.getCustomFieldObjectByName("Sprint").getIdAsLong()).eq(sprint)
+                .customField(customFieldManager.getCustomFieldObjectByName("Sprint").getIdAsLong()).eq(sprint)
                 .and().project(project).buildQuery();
 
         PagerFilter pagerFilter = PagerFilter.getUnlimitedFilter();
