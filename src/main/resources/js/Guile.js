@@ -22,7 +22,7 @@ GADGET = {
             return {
                 url: '/rest/guile/1.0/boards/' + this.getPref('board') + '/sprints/' + this.getPref('sprint') + '/changes',
                 data: {
-                    fields: ['timeestimate','timespent']
+                    fields: ['timeestimate','Sprint','Parent Issue']
                 },
                 contentType: 'application/json'
             };
@@ -109,57 +109,80 @@ GADGET = {
         };
     },
 
+    calculate: function(issues, sprint) {
+        return Object.keys(issues)
+            .map(function(key) { return issues[key]; })
+            .filter(function(issue) {
+                // only issues in the sprint
+                return (issue['Parent Issue'] === undefined && issue['Sprint'] == sprint)
+                    // or subtasks with a parent in the sprint
+                    || (issues[issue['Parent Issue']] !== undefined && issues[issue['Parent Issue']]['Sprint'] == sprint);
+            })
+            .reduce(function(total, issue) { return total+=parseInt(issue['timeestimate'] || '0'); }, 0)
+    },
+
     render: function(svg, args) {
         var start = new Date(args.sprintData.sprint.startDate).getTime();
         var end = new Date(args.sprintData.sprint.endDate).getTime();
+        var sprintId = args.sprintData.sprint.id;
 
-        var estimates = args.issueData.changes.timeestimate;
+        // Flatten JSON event hierarchy
         var events = [];
-        for(issue in estimates) {
-            var current = 0;
-            estimates[issue].forEach(function(event) {
-                event.delta = event.value - current;
-                event.issue = issue;
-                current = event.value;
-            });
-            events = events.concat(estimates[issue]);
+        for(field in args.issueData.changes) {
+            for(issue in args.issueData.changes[field]) {
+                args.issueData.changes[field][issue].forEach(function(event) {
+                    event.field = field;
+                    event.issue = issue;
+                    events.push(event);
+                })
+            }
         }
         events.sort(function(a,b) {return a.date - b.date;});
+
+        var max = 0;
+        var total = 0;
+        var issues = {};
+        var points = [];
+
+        events.forEach(function(event) {
+            // calculate and post the opening total
+            if(event.date > start && points.length === 0) {
+                max = total = GADGET.calculate(issues, sprintId);
+                points.push([0, total]);
+            }
+
+            // update the issue records
+            if(issues[event.issue] === undefined)
+                issues[event.issue] = {};
+            issues[event.issue][event.field] = event.value;
+
+            // if within the sprint
+            if(event.date > start) {
+                postTotal = GADGET.calculate(issues, sprintId);
+                // and a transition occurred
+                if(postTotal !== total) {
+                    var x = event.date - start;
+                    // plot that transition.
+                    points.push([x, total], [x, postTotal]);
+                    total = postTotal;
+                    if(total > max) max = total;
+                }
+            }
+        });
 
         var left = 20;
         var top = 20;
         var right = svg.width() - 40;
         var bottom = svg.height() - 40;
 
-        var max = 0;
-        var total = 0;
-
-        events.forEach(function(event) {
-            total += event.delta;
-            if(total > max) max = total;
-        });
-
         var xScale = (right - left) / (end - start);
         var yScale = (top - bottom) / max;
-
-        var points = [];
-
-        var y = 0;
-        events.forEach(function(event) {
-            if(event.date > start) {
-                if(points.length === 0)
-                    points = points.concat([[0, y]]);
-                var x = event.date - start;
-                points = points.concat([[x, y], [x, y + event.delta]]);
-            }
-            y += event.delta;
-        })
 
         points.forEach(function(point) {
             point[0] = point[0] * xScale + left;
             point[1] = point[1] * yScale + bottom;
         });
 
-        svg.polyline(points, {fill: 'none', stroke: 'black', strokeWidth: 3});
+        svg.polyline(points, {fill: 'none', stroke: 'black', strokeWidth: 2});
     }
 };
