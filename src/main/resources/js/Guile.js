@@ -22,7 +22,7 @@ GADGET = {
             return {
                 url: '/rest/guile/1.0/boards/' + this.getPref('board') + '/sprints/' + this.getPref('sprint') + '/changes',
                 data: {
-                    fields: ['timeestimate','Sprint','Parent Issue']
+                    fields: ['Sprint','Parent Issue','timeestimate','timeoriginalestimate']
                 },
                 contentType: 'application/json'
             };
@@ -109,7 +109,7 @@ GADGET = {
         };
     },
 
-    calculate: function(issues, sprint) {
+    relevant: function(issues, sprint) {
         return Object.keys(issues)
             .map(function(key) { return issues[key]; })
             .filter(function(issue) {
@@ -118,13 +118,83 @@ GADGET = {
                     // or subtasks with a parent in the sprint
                     || (issues[issue['Parent Issue']] !== undefined && issues[issue['Parent Issue']]['Sprint'] == sprint);
             })
-            .reduce(function(total, issue) { return total+=parseInt(issue['timeestimate'] || '0'); }, 0)
+    },
+
+    simulate: function(sprintId, start, complete, plots, events) {
+        var max = undefined;
+        var issues = {};
+
+        events.forEach(function(event) {
+            // calculate and post the opening total for each plot
+            if(max === undefined && event.date > start) {
+                max = 0;
+                var relevant = GADGET.relevant(issues, sprintId);
+                plots.forEach(function(plot) {
+                    plot.y = plot.aggregate(relevant);
+                    if(plot.y > max) max = plot.y;
+                    plot.points = [[0, plot.y]];
+                });
+            }
+
+            // update the issue records
+            if(issues[event.issue] === undefined)
+                issues[event.issue] = {};
+            issues[event.issue][event.field] = event.value;
+
+            // if within the sprint
+            if(event.date > start) {
+                var relevant = GADGET.relevant(issues, sprintId);
+                var x = event.date - start;
+                plots.forEach(function(plot) {
+                    var y = plot.aggregate(relevant);
+                    // and a transition occurred
+                    if(y !== plot.y) {
+                        // plot that transition.
+                        plot.points.push([x, plot.y], [x, y]);
+                        plot.y = y;
+                        if(y > max) max = y;
+                    }
+                });
+            }
+        });
+
+        var x = complete - start;
+        plots.forEach(function(plot) {
+            plot.points.push([x, plot.y])
+        });
+
+        return max;
     },
 
     render: function(svg, args) {
         var start = new Date(args.sprintData.sprint.startDate).getTime();
         var end = new Date(args.sprintData.sprint.endDate).getTime();
+        var complete = new Date(args.sprintData.sprint.completeDate).getTime();
         var sprintId = args.sprintData.sprint.id;
+
+        var plots = [{
+            line: {
+                fill: 'none',
+                stroke: 'red',
+                'stroke-opacity': 0.5,
+                strokeWidth: 2
+            },
+
+            aggregate: function(issues) {
+                return issues.reduce(function(total, issue) { return total+=parseInt(issue['timeestimate'] || '0'); }, 0);
+            }
+        }, {
+            line: {
+                fill: 'none',
+                stroke: 'blue',
+                'stroke-opacity': 0.5,
+                strokeWidth: 2
+            },
+
+            aggregate: function(issues) {
+                return issues.reduce(function(total, issue) { return total+=parseInt(issue['timeoriginalestimate'] || '0'); }, 0);
+            }
+        }];
 
         // Flatten JSON event hierarchy
         var events = [];
@@ -139,36 +209,7 @@ GADGET = {
         }
         events.sort(function(a,b) {return a.date - b.date;});
 
-        var max = 0;
-        var total = 0;
-        var issues = {};
-        var points = [];
-
-        events.forEach(function(event) {
-            // calculate and post the opening total
-            if(event.date > start && points.length === 0) {
-                max = total = GADGET.calculate(issues, sprintId);
-                points.push([0, total]);
-            }
-
-            // update the issue records
-            if(issues[event.issue] === undefined)
-                issues[event.issue] = {};
-            issues[event.issue][event.field] = event.value;
-
-            // if within the sprint
-            if(event.date > start) {
-                postTotal = GADGET.calculate(issues, sprintId);
-                // and a transition occurred
-                if(postTotal !== total) {
-                    var x = event.date - start;
-                    // plot that transition.
-                    points.push([x, total], [x, postTotal]);
-                    total = postTotal;
-                    if(total > max) max = total;
-                }
-            }
-        });
+        var max = GADGET.simulate(sprintId, start, complete, plots, events);
 
         var left = 20;
         var top = 20;
@@ -178,11 +219,13 @@ GADGET = {
         var xScale = (right - left) / (end - start);
         var yScale = (top - bottom) / max;
 
-        points.forEach(function(point) {
-            point[0] = point[0] * xScale + left;
-            point[1] = point[1] * yScale + bottom;
-        });
+        plots.forEach(function(plot) {
+            plot.points.forEach(function(point) {
+                point[0] = point[0] * xScale + left;
+                point[1] = point[1] * yScale + bottom;
+            });
 
-        svg.polyline(points, {fill: 'none', stroke: 'black', strokeWidth: 2});
+            svg.polyline(plot.points, plot.line);
+        });
     }
 };
