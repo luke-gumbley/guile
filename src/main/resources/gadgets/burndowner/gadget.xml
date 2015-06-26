@@ -1,57 +1,57 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <Module>
-    <ModulePrefs title="__MSG_burndowner.name__"
-                 title_url=""
-                 directory_title="__MSG_burndowner.name__"
-                 description="__MSG_burndowner.description__"
-                 author=""
-                 author_email=""
-                 screenshot='http://www.google.com/gadgets/directory/2661487601-no_preview.gif'
-                 thumbnail='http://www.google.com/gadgets/directory/348515928-no_image_gadget_thm.png'
-                 >
-        <Optional feature="gadget-directory">
-            <Param name="categories">
-                JIRA
-            </Param>
-        </Optional>
-        <Require feature="setprefs" />
-        <Require feature="views" />
-        <Require feature="dynamic-height" />
-        <Require feature="oauthpopup" />
-        #oauth
-        <Optional feature="atlassian.util"/>
-        #supportedLocales("gadget.common,${MODULE_KEY}")
-    </ModulePrefs>
-    <UserPref name="isConfigured" datatype="hidden" default_value="false"/>
-    <UserPref name="refresh" datatype="hidden" default_value="false" />
-    <UserPref name="board" datatype="hidden" />
-    <UserPref name="sprint" datatype="hidden" />
-    <UserPref name="aspectRatio" datatype="hidden" default_value="16:9"/>
-    <Content type="html" view="profile">
-        <![CDATA[
-            #requireResource("com.atlassian.jira.gadgets:common")
-            #requireResource("com.atlassian.plugins.guile.Guile:guile-resources")
-            #includeResources()
-            <script>
-                var gadget = AJS.Gadget({
-                    baseUrl: "__ATLASSIAN_BASE_URL__",
-                    useOauth: "/rest/gadget/1.0/currentUser",
-                    config: {
-                        descriptor: GADGET.descriptor,
-                        args: [{
-                            key: "rapidview",
-                            ajaxOptions: '/rest/greenhopper/1.0/rapidview'
-                        }]
-                    },
-                    view: {
-                        enableReload: true,
-                        onResizeReload: true,
-                        onResizeAdjustHeight: true,
-                        template: GADGET.template,
-                        args: GADGET.templateArgs
-                    }
-                });
-            </script>
-        ]]>
-    </Content>
+	<ModulePrefs title="__MSG_burndowner.name__"
+				 title_url=""
+				 directory_title="__MSG_burndowner.name__"
+				 description="__MSG_burndowner.description__"
+				 author=""
+				 author_email=""
+				 screenshot='http://www.google.com/gadgets/directory/2661487601-no_preview.gif'
+				 thumbnail='http://www.google.com/gadgets/directory/348515928-no_image_gadget_thm.png'
+				 >
+		<Optional feature="gadget-directory">
+			<Param name="categories">
+				JIRA
+			</Param>
+		</Optional>
+		<Require feature="setprefs" />
+		<Require feature="views" />
+		<Require feature="dynamic-height" />
+		<Require feature="oauthpopup" />
+		#oauth
+		<Optional feature="atlassian.util"/>
+		#supportedLocales("gadget.common,${MODULE_KEY}")
+	</ModulePrefs>
+	<UserPref name="isConfigured" datatype="hidden" default_value="false"/>
+	<UserPref name="refresh" datatype="hidden" default_value="false" />
+	<UserPref name="board" datatype="hidden" />
+	<UserPref name="sprint" datatype="hidden" />
+	<UserPref name="aspectRatio" datatype="hidden" default_value="16:9"/>
+	<Content type="html" view="profile">
+		<![CDATA[
+			#requireResource("com.atlassian.jira.gadgets:common")
+			#requireResource("com.atlassian.plugins.guile.Guile:guile-resources")
+			#includeResources()
+			<script>
+				var gadget = AJS.Gadget({
+					baseUrl: "__ATLASSIAN_BASE_URL__",
+					useOauth: "/rest/gadget/1.0/currentUser",
+					config: {
+						descriptor: GADGET.descriptor,
+						args: [{
+							key: "rapidview",
+							ajaxOptions: '/rest/greenhopper/1.0/rapidview'
+						}]
+					},
+					view: {
+						enableReload: true,
+						onResizeReload: true,
+						onResizeAdjustHeight: true,
+						template: GADGET.template,
+						args: GADGET.templateArgs
+					}
+				});
+			</script>
+		]]>
+	</Content>
 </Module>

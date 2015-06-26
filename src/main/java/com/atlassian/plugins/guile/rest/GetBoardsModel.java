@@ -9,16 +9,16 @@ import javax.xml.bind.annotation.XmlRootElement;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class GetBoardsModel {
 
-    @XmlElement(name = "boards")
-    private BoardModel[] boards;
-    public BoardModel[] getBoards() { return boards; }
-    public void setBoards(BoardModel[] value) { boards = value; }
+	@XmlElement(name = "boards")
+	private BoardModel[] boards;
+	public BoardModel[] getBoards() { return boards; }
+	public void setBoards(BoardModel[] value) { boards = value; }
 
-    public GetBoardsModel() {
-    }
+	public GetBoardsModel() {
+	}
 
-    public GetBoardsModel(BoardModel[] boards) {
-        this.boards = boards;
-    }
+	public GetBoardsModel(BoardModel[] boards) {
+		this.boards = boards;
+	}
 
 }

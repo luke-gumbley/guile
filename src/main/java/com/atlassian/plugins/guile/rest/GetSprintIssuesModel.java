@@ -9,16 +9,16 @@ import javax.xml.bind.annotation.XmlRootElement;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class GetSprintIssuesModel {
 
-    @XmlElement(name = "issues")
-    private IssueModel[] issues;
-    public IssueModel[] getIssues() { return issues; }
-    public void setIssues(IssueModel[] value) { issues = value; }
+	@XmlElement(name = "issues")
+	private IssueModel[] issues;
+	public IssueModel[] getIssues() { return issues; }
+	public void setIssues(IssueModel[] value) { issues = value; }
 
-    public GetSprintIssuesModel() {
-    }
+	public GetSprintIssuesModel() {
+	}
 
-    public GetSprintIssuesModel(IssueModel[] issues) {
-        this.issues = issues;
-    }
+	public GetSprintIssuesModel(IssueModel[] issues) {
+		this.issues = issues;
+	}
 
 }

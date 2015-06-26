@@ -10,23 +10,23 @@ import javax.ws.rs.core.Response;
 
 public class MyRestResourceTest {
 
-    @Before
-    public void setup() {
+	@Before
+	public void setup() {
 
-    }
+	}
 
-    @After
-    public void tearDown() {
+	@After
+	public void tearDown() {
 
-    }
+	}
 
-    @Test
-    public void messageIsValid() {
-        //MyRestResource resource = new MyRestResource();
+	@Test
+	public void messageIsValid() {
+		//MyRestResource resource = new MyRestResource();
 
-        //Response response = resource.getMessage();
-        //final MyRestResourceModel message = (MyRestResourceModel) response.getEntity();
+		//Response response = resource.getMessage();
+		//final MyRestResourceModel message = (MyRestResourceModel) response.getEntity();
 
-        assertEquals("wrong message","Hello World","Hello World");
-    }
+		assertEquals("wrong message","Hello World","Hello World");
+	}
 }

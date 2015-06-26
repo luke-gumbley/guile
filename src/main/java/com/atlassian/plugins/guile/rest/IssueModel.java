@@ -12,21 +12,21 @@ import javax.xml.bind.annotation.XmlRootElement;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class IssueModel {
 
-    IssueModel() {}
+	IssueModel() {}
 
-    IssueModel(long id, String key) {
-        this.id = id;
-        this.key = key;
-    }
+	IssueModel(long id, String key) {
+		this.id = id;
+		this.key = key;
+	}
 
-    @XmlElement(name = "id")
-    private long id;
-    public long getId() { return id; }
-    public void setId(long id) { this.id = id; }
+	@XmlElement(name = "id")
+	private long id;
+	public long getId() { return id; }
+	public void setId(long id) { this.id = id; }
 
-    @XmlElement(name = "key")
-    private String key;
-    public String getKey() { return key; }
-    public void setKey(String key) { this.key = key; }
+	@XmlElement(name = "key")
+	private String key;
+	public String getKey() { return key; }
+	public void setKey(String key) { this.key = key; }
 
 }

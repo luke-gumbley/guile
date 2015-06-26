@@ -10,27 +10,27 @@ import org.apache.wink.client.RestClient;
 
 public class MyRestResourceFuncTest {
 
-    @Before
-    public void setup() {
+	@Before
+	public void setup() {
 
-    }
+	}
 
-    @After
-    public void tearDown() {
+	@After
+	public void tearDown() {
 
-    }
+	}
 
-    @Test
-    public void messageIsValid() {
+	@Test
+	public void messageIsValid() {
 
-        String baseUrl = System.getProperty("baseurl");
-        String resourceUrl = baseUrl + "/rest/guile/1.0/message";
+		String baseUrl = System.getProperty("baseurl");
+		String resourceUrl = baseUrl + "/rest/guile/1.0/message";
 
-        RestClient client = new RestClient();
-        Resource resource = client.resource(resourceUrl);
+		RestClient client = new RestClient();
+		Resource resource = client.resource(resourceUrl);
 
-        MyRestResourceModel message = resource.get(MyRestResourceModel.class);
+		MyRestResourceModel message = resource.get(MyRestResourceModel.class);
 
-        assertEquals("wrong message","Hello World",message.getMessage());
-    }
+		assertEquals("wrong message","Hello World",message.getMessage());
+	}
 }

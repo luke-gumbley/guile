@@ -11,16 +11,16 @@ import java.util.Map;
 @XmlAccessorType(XmlAccessType.FIELD)
 public class GetChangesModel {
 
-    @XmlElement(name = "changes")
-    private Map<String, List<ChangeModel>> changes;
-    public Map<String, List<ChangeModel>> getChanges() { return changes; }
-    public void setChanges(Map<String, List<ChangeModel>> value) { changes = value; }
+	@XmlElement(name = "changes")
+	private Map<String, List<ChangeModel>> changes;
+	public Map<String, List<ChangeModel>> getChanges() { return changes; }
+	public void setChanges(Map<String, List<ChangeModel>> value) { changes = value; }
 
-    public GetChangesModel() {
-    }
+	public GetChangesModel() {
+	}
 
-    public GetChangesModel(Map<String, List<ChangeModel>> changes) {
-        this.changes = changes;
-    }
+	public GetChangesModel(Map<String, List<ChangeModel>> changes) {
+		this.changes = changes;
+	}
 
 }
