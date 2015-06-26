@@ -104,7 +104,50 @@ GADGET = {
 				label: 'Aspect Ratio',
 				type: 'text',
 				value: gadget.getPref('aspectRatio')
-			},
+			}, {
+                id: 'plots',
+                userpref: 'plots',
+                label: 'Plots',
+                type: "callbackBuilder",
+                callback: function (parentDiv) {
+                    // God only knows why gadget.getPrefs().getString escapes the string before returning it.
+					var plots=JSON.parse(gadgets.util.unescapeString(gadget.getPref('plots')));
+					plots = AJS.$.isArray(plots) ? plots : [];
+					plots.forEach(function(plot,i) {
+						var plotDiv = AJS.$('<div />');
+						var exprInput = AJS.$('<input type="text">')
+							.attr('id','plotexpr' + i)
+							.addClass('text')
+							.addClass('medium-field')
+							.css('margin-right','10px')
+							.val(plot.expr || '');
+						var colourInput = AJS.$('<input type="text">')
+							.attr('id','plotcolor' + i)
+							.addClass('text')
+							.addClass('short-field')
+							.val(plot.colour || '');
+						var removePlot = AJS.$('<span />')
+							.addClass('aui-icon')
+							.addClass('aui-icon-small')
+							.addClass('aui-iconfont-close-dialog')
+							.css('margin-left','4px');
+						plotDiv.append(exprInput);
+						plotDiv.append(colourInput);
+						plotDiv.append(removePlot);
+						parentDiv.append(plotDiv);
+					});
+					var addDiv = AJS.$('<div />');
+					var addPlot = AJS.$('<span />')
+						.addClass('aui-icon')
+						.addClass('aui-icon-small')
+						.addClass('aui-iconfont-add')
+						.css('margin','7px 0px 7px 254px');
+					addDiv.append(addPlot);
+					parentDiv.append(addDiv);
+
+					//gadget.savePref()
+                }
+            },
 			AJS.gadget.fields.nowConfigured()]
 	};
 },
@@ -200,7 +243,18 @@ GADGET = {
 			aggregate: function(issues) {
 				return issues.reduce(function(total, issue) { return total+=parseInt(issue['timeoriginalestimate'] || '0'); }, 0);
 			}
-		}];
+		}, {
+            line: {
+                fill: 'none',
+                stroke: 'green',
+                'stroke-opacity': 0.5,
+                strokeWidth: 2
+            },
+
+            aggregate: function(issues) {
+                return issues.reduce(function(total, issue) { return total+=parseInt(issue['timespent'] || '0'); }, 0);
+            }
+        }];
 
 		// Flatten JSON event hierarchy
 		var events = [];

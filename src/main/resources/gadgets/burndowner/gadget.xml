@@ -26,6 +26,16 @@
 	<UserPref name="refresh" datatype="hidden" default_value="false" />
 	<UserPref name="board" datatype="hidden" />
 	<UserPref name="sprint" datatype="hidden" />
+    <UserPref name="plots" datatype="hidden" default_value="[{
+        &quot;expr&quot;:&quot;timeestimate&quot;,
+        &quot;colour&quot;:&quot;red&quot;
+    },{
+        &quot;expr&quot;:&quot;timeoriginalestimate&quot;,
+        &quot;colour&quot;:&quot;blue&quot;
+    },{
+        &quot;expr&quot;:&quot;timespent&quot;,
+        &quot;colour&quot;:&quot;green&quot;
+    }]"/>
 	<UserPref name="aspectRatio" datatype="hidden" default_value="16:9"/>
 	<Content type="html" view="profile">
 		<![CDATA[
