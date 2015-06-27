@@ -30,22 +30,12 @@ GADGET = {
 	}],
 
 	template: function (args) {
-		var gadget=this;
-		var ratioPref = gadget.getPref('aspectRatio').split(':')
-		var ratio = ratioPref[0] / ratioPref[1];
-		var view = gadget.getView();
-		args.width = view.width();
-		args.height = args.width/ratio;
+		var view = this.getView();
 		if(!GADGET.initialized) {
-			view.svg({
-				onLoad: function(svg) { GADGET.render(svg,args); },
-				settings: { width: args.width, height: args.height }
-			});
+			view.svg({ onLoad: function(svg) { GADGET.render(svg,args); } });
 			GADGET.initialized = true;
 		} else {
-			GADGET.render(view.svg('get')
-				.clear()
-				.configure({width: args.width, height: args.height}), args);
+			GADGET.render(view.svg('get').clear(), args);
 		}
 	},
 
@@ -267,6 +257,14 @@ GADGET = {
 	},
 
 	render: function(svg, args) {
+		var gadgetDiv = gadget.getGadget();
+		var ratioPref = gadget.getPref('aspectRatio').split(':')
+        var ratio = ratioPref[0] / ratioPref[1];
+        var width = gadgetDiv.width();
+        var height = width / ratio;
+
+		svg.configure({width: width, height: height});
+
 		var start = new Date(args.sprintData.sprint.startDate).getTime();
 		var end = new Date(args.sprintData.sprint.endDate).getTime();
 		var complete = new Date(args.sprintData.sprint.completeDate).getTime();
@@ -317,8 +315,8 @@ GADGET = {
 
 		var left = 20;
 		var top = 20;
-		var right = args.width - 40;
-		var bottom = args.height - 40;
+		var right = width - 40;
+		var bottom = height - 40;
 
 		var xScale = (right - left) / (end - start);
 		var yScale = (top - bottom) / max;

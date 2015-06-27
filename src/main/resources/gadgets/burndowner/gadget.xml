@@ -1,11 +1,10 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <Module>
 	<ModulePrefs title="__MSG_burndowner.name__"
-				 title_url=""
 				 directory_title="__MSG_burndowner.name__"
 				 description="__MSG_burndowner.description__"
-				 author=""
-				 author_email=""
+				 author="Luke Gumbley"
+				 author_email="luke.gumbley@xero.com"
 				 screenshot='http://www.google.com/gadgets/directory/2661487601-no_preview.gif'
 				 thumbnail='http://www.google.com/gadgets/directory/348515928-no_image_gadget_thm.png'
 				 >
@@ -20,7 +19,7 @@
 		<Require feature="oauthpopup" />
 		#oauth
 		<Optional feature="atlassian.util"/>
-		#supportedLocales("gadget.common,${MODULE_KEY}")
+		#supportedLocales("gadget.common,burndowner")
 	</ModulePrefs>
 	<UserPref name="isConfigured" datatype="hidden" default_value="false"/>
 	<UserPref name="refresh" datatype="hidden" default_value="false" />
