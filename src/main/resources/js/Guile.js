@@ -70,7 +70,7 @@ GADGET = {
 
 	descriptor: function(args) {
 		return {
-			//action: "validation url",
+			action: "",
 			theme: "long-label", //top-label
 			fields:[{
 				id: "board-select",
@@ -113,45 +113,84 @@ GADGET = {
                     // God only knows why gadget.getPrefs().getString escapes the string before returning it.
 					var plots=JSON.parse(gadgets.util.unescapeString(gadget.getPref('plots')));
 					plots = AJS.$.isArray(plots) ? plots : [];
-					plots.forEach(function(plot,i) {
-						var plotDiv = AJS.$('<div />');
-						var exprInput = AJS.$('<input type="text">')
-							.attr('id','plotexpr' + i)
-							.addClass('text')
-							.addClass('medium-field')
-							.css('margin-right','10px')
-							.val(plot.expr || '');
-						var colourInput = AJS.$('<input type="text">')
-							.attr('id','plotcolor' + i)
-							.addClass('text')
-							.addClass('short-field')
-							.val(plot.colour || '');
-						var removePlot = AJS.$('<span />')
-							.addClass('aui-icon')
-							.addClass('aui-icon-small')
-							.addClass('aui-iconfont-close-dialog')
-							.css('margin-left','4px');
-						plotDiv.append(exprInput);
-						plotDiv.append(colourInput);
-						plotDiv.append(removePlot);
-						parentDiv.append(plotDiv);
-					});
-					var addDiv = AJS.$('<div />');
-					var addPlot = AJS.$('<span />')
-						.addClass('aui-icon')
-						.addClass('aui-icon-small')
-						.addClass('aui-iconfont-add')
-						.css('margin','7px 0px 7px 254px');
-					addDiv.append(addPlot);
-					parentDiv.append(addDiv);
 
-					//gadget.savePref()
+                    var plotField = AJS.$('<input>')
+                        .attr({id:'plot-field',type:'hidden',name:'plots'})
+                        .val(JSON.stringify(plots));
+					parentDiv.append(plotField);
+
+					var addButton = AJS.$('<span />')
+                        .addClass('aui-icon aui-icon-small aui-iconfont-add')
+                        .css('margin','7px 0px 7px 254px');
+					var addPlot = AJS.$('<div />')
+						.attr({id: 'addPlot'})
+						.append(addButton)
+						.click(function() { GADGET.addPlot(); });
+					parentDiv.append(addPlot);
+
+					plots.forEach(function(plot) { GADGET.addPlot(plot); });
                 }
             },
 			AJS.gadget.fields.nowConfigured()]
-	};
-},
+		};
+	},
 
+	updatePlots: function() {
+		var parentDiv = AJS.$('div#plots');
+
+		var plotFields = parentDiv.children('.plotfields');
+
+		var plots = plotFields.map(function(i,plot) {
+			var plotDiv = AJS.$(plot);
+			return {
+				expr: plotDiv.children('.expr').val(),
+				colour: plotDiv.children('.colour').val()
+			};
+		}).get();
+
+		AJS.$('#plot-field').val(JSON.stringify(plots));
+	},
+
+	addPlot: function(plot) {
+		var parentDiv = AJS.$('div#plots');
+		var addPlot = parentDiv.children('#addPlot');
+
+		var plotDiv = AJS.$('<div />')
+			.addClass('plotfields')
+			.css('margin-top','5px');
+
+		var exprInput = AJS.$('<input>')
+			.attr({type:'text'})
+			.addClass('expr text medium-field')
+			.css('margin-right','10px')
+			.val(plot ? (plot.expr || '') : '')
+            .change(GADGET.updatePlots)
+		var colourInput = AJS.$('<input>')
+			.attr({type:'text'})
+			.addClass('colour text short-field')
+			.val(plot ? (plot.colour || '') : '')
+            .change(GADGET.updatePlots)
+		var removePlot = AJS.$('<span />')
+			.addClass('aui-icon aui-icon-small aui-iconfont-close-dialog')
+			.css('margin-left','4px')
+			.click(GADGET.removePlot);
+		plotDiv.append(exprInput);
+		plotDiv.append(colourInput);
+		plotDiv.append(removePlot);
+
+		addPlot.before(plotDiv);
+
+		if(!plot) {
+			GADGET.updatePlots();
+			gadget.resize();
+		}
+	},
+
+	removePlot: function(event) {
+		AJS.$(event.target).parent().remove();
+		GADGET.updatePlots();
+        gadget.resize();
+	},
 /*
 		var expr = math.parse('timeestimate');
 		var variables = expr.filter(function(node) { return node.type === 'SymbolNode'; }).map(function(node) { return node.name; })
