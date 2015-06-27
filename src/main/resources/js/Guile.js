@@ -34,17 +34,18 @@ GADGET = {
 		var ratioPref = gadget.getPref('aspectRatio').split(':')
 		var ratio = ratioPref[0] / ratioPref[1];
 		var view = gadget.getView();
-		var width = view.width();
+		args.width = view.width();
+		args.height = args.width/ratio;
 		if(!GADGET.initialized) {
 			view.svg({
 				onLoad: function(svg) { GADGET.render(svg,args); },
-				settings: { width: width, height: width/ratio }
+				settings: { width: args.width, height: args.height }
 			});
 			GADGET.initialized = true;
 		} else {
 			GADGET.render(view.svg('get')
 				.clear()
-				.configure({width: width, height: width/ratio}), args);
+				.configure({width: args.width, height: args.height}), args);
 		}
 	},
 
@@ -316,8 +317,8 @@ GADGET = {
 
 		var left = 20;
 		var top = 20;
-		var right = svg.width() - 40;
-		var bottom = svg.height() - 40;
+		var right = args.width - 40;
+		var bottom = args.height - 40;
 
 		var xScale = (right - left) / (end - start);
 		var yScale = (top - bottom) / max;
