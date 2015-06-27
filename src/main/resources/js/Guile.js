@@ -110,9 +110,7 @@ GADGET = {
                 label: 'Plots',
                 type: "callbackBuilder",
                 callback: function (parentDiv) {
-                    // God only knows why gadget.getPrefs().getString escapes the string before returning it.
-					var plots=JSON.parse(gadgets.util.unescapeString(gadget.getPref('plots')));
-					plots = AJS.$.isArray(plots) ? plots : [];
+					var plots = GADGET.getPlots();
 
                     var plotField = AJS.$('<input>')
                         .attr({id:'plot-field',type:'hidden',name:'plots'})
@@ -133,6 +131,12 @@ GADGET = {
             },
 			AJS.gadget.fields.nowConfigured()]
 		};
+	},
+
+	getPlots: function() {
+        // God only knows why gadget.getPrefs().getString escapes the string before returning it.
+		var plots = JSON.parse(gadgets.util.unescapeString(gadget.getPref('plots')));
+		return AJS.$.isArray(plots) ? plots : [];
 	},
 
 	updatePlots: function() {
@@ -191,11 +195,6 @@ GADGET = {
 		GADGET.updatePlots();
         gadget.resize();
 	},
-/*
-		var expr = math.parse('timeestimate');
-		var variables = expr.filter(function(node) { return node.type === 'SymbolNode'; }).map(function(node) { return node.name; })
-		expr.compile(math).eval({'timeestimate':3});
-*/
 
 	relevant: function(issues, sprint) {
 		return Object.keys(issues)
@@ -210,12 +209,24 @@ GADGET = {
 
 	simulate: function(sprintId, start, complete, plots, events) {
 		var max = undefined;
+
+		// ensure a default is set for every variable required for every plot
+		var defaults = {};
+		plots.forEach(function(plot) {
+			plot.variables.forEach(function(variable) {
+				defaults[variable] = 0;
+			});
+		});
+
+		// start with no knowledge of any issues...
 		var issues = {};
 
+		// and build issue knowledge with each event
 		events.forEach(function(event) {
-			// calculate and post the opening total for each plot
+			// calculate and post the opening total for each plot, once all pre-sprint events have been processed.
 			if(max === undefined && event.date > start) {
 				max = 0;
+				// only issues in the sprint or with a parent in the sprint are relevant
 				var relevant = GADGET.relevant(issues, sprintId);
 				plots.forEach(function(plot) {
 					plot.y = plot.aggregate(relevant);
@@ -224,9 +235,9 @@ GADGET = {
 				});
 			}
 
-			// update the issue records
+			// update the issue records with information from this event
 			if(issues[event.issue] === undefined)
-				issues[event.issue] = {};
+				issues[event.issue] = AJS.$.extend({}, defaults);
 			issues[event.issue][event.field] = event.value;
 
 			// if within the sprint
@@ -260,40 +271,30 @@ GADGET = {
 		var complete = new Date(args.sprintData.sprint.completeDate).getTime();
 		var sprintId = args.sprintData.sprint.id;
 
-		var plots = [{
-			line: {
+		var plots = GADGET.getPlots();
+
+		plots.forEach(function(plot) {
+			plot.line = {
 				fill: 'none',
-				stroke: 'red',
+				stroke: plot.colour,
 				'stroke-opacity': 0.5,
 				strokeWidth: 2
-			},
+			};
 
-			aggregate: function(issues) {
-				return issues.reduce(function(total, issue) { return total+=parseInt(issue['timeestimate'] || '0'); }, 0);
+			plot.expr = math.parse(plot.expr);
+			plot.variables = plot.expr
+				.filter(function(node) { return node.type === 'SymbolNode'; })
+				.map(function(node) { return node.name; });
+			plot.expr = plot.expr.compile(math);
+
+			plot.aggregate = function(issues) {
+				var self = this;
+				return issues.reduce(function(total, issue) {
+					return total += self.expr.eval(issue);
+				}, 0);
 			}
-		}, {
-			line: {
-				fill: 'none',
-				stroke: 'blue',
-				'stroke-opacity': 0.5,
-				strokeWidth: 2
-			},
 
-			aggregate: function(issues) {
-				return issues.reduce(function(total, issue) { return total+=parseInt(issue['timeoriginalestimate'] || '0'); }, 0);
-			}
-		}, {
-            line: {
-                fill: 'none',
-                stroke: 'green',
-                'stroke-opacity': 0.5,
-                strokeWidth: 2
-            },
-
-            aggregate: function(issues) {
-                return issues.reduce(function(total, issue) { return total+=parseInt(issue['timespent'] || '0'); }, 0);
-            }
-        }];
+		});
 
 		// Flatten JSON event hierarchy
 		var events = [];
@@ -302,6 +303,9 @@ GADGET = {
 				args.issueData.changes[field][issue].forEach(function(event) {
 					event.field = field;
 					event.issue = issue;
+					// parse as a float if possible, math.js can work with strings though so don't rule out crazy stuff.
+					var value = event.value === "" ? 0 : parseFloat(event.value);
+					event.value = isNaN(value) ? event.value : value;
 					events.push(event);
 				})
 			}
