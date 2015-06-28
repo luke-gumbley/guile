@@ -12,7 +12,7 @@ GADGET = {
 		key: 'sprintData',
 		ajaxOptions: function() {
 			return {
-				url: '/rest/greenhopper/1.0/sprint/' + this.getPref('sprint') + '/edit/model',
+				url: '/rest/guile/1.0/boards/' + this.getPref('board') + '/sprints/' + this.getPref('sprint'),
 				contentType: 'application/json'
 			};
 		}
@@ -265,10 +265,10 @@ GADGET = {
 
 		svg.configure({width: width, height: height});
 
-		var start = new Date(args.sprintData.sprint.startDate).getTime();
-		var end = new Date(args.sprintData.sprint.endDate).getTime();
-		var complete = new Date(args.sprintData.sprint.completeDate).getTime();
-		var sprintId = args.sprintData.sprint.id;
+		var start = new Date(args.sprintData.start).getTime();
+		var end = new Date(args.sprintData.end).getTime();
+		var complete = new Date(args.sprintData.complete).getTime();
+		var sprintId = args.sprintData.id;
 
 		var plots = GADGET.getPlots();
 

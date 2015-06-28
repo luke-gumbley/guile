@@ -30,6 +30,8 @@ import javax.ws.rs.core.MediaType;
 import javax.ws.rs.core.MultivaluedMap;
 import javax.ws.rs.core.Response;
 import java.sql.Timestamp;
+import java.time.*;
+import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import com.sun.jersey.api.client.*;
@@ -126,8 +128,27 @@ public class MyRestResource {
 
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	private static class sprintIssueResponse {
-		@JsonProperty("contents")
 		public sprintIssueContents contents;
+	}
+
+   	@JsonIgnoreProperties(ignoreUnknown = true)
+	private static class sprintModel {
+		public int id;
+		public String name;
+		public String startDate;
+		public String endDate;
+		public String completeDate;
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	private static class sprintModelResponse {
+		public sprintModel sprint;
+	}
+
+	@JsonIgnoreProperties(ignoreUnknown = true)
+	private static class ratesResponse {
+		public String timezone;
+		public RateModel[] rates;
 	}
 
 	@GET
@@ -313,6 +334,43 @@ public class MyRestResource {
 			}
 		}
 		return issues;
+	}
+
+	// Unbelievably, the GreenHopper workday API returns epoch timestamps that they have munged to a particular timezone.
+	// This while the sprint model returns server-local date time strings with no timezone info.
+	private Timestamp unmungeTimestamp(Timestamp stamp, String timezone) {
+		DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss.S");
+		String corrected = formatter.withZone(ZoneId.of("UTC")).format(stamp.toLocalDateTime().atZone(ZoneId.of(timezone)));
+		return Timestamp.valueOf(LocalDateTime.parse(corrected,formatter));
+	}
+
+	@GET
+	@AnonymousAllowed
+	@Produces({MediaType.APPLICATION_JSON, MediaType.APPLICATION_XML})
+	@Path("boards/{boardId}/sprints/{sprintId}")
+	public Response getSprint(@Context HttpServletRequest request, @PathParam("boardId") long boardId, @PathParam("sprintId") long sprintId) {
+		sprintModel sprint = executeCall(request, sprintModelResponse.class, "greenhopper/1.0/sprint/" + Long.toString(sprintId) + "/edit/model").sprint;
+
+		DateTimeFormatter formatter = DateTimeFormatter
+			.ofPattern("dd/MMM/yy h:mm a")
+			.withZone(ZoneId.of("Pacific/Auckland"));
+
+		Timestamp start = Timestamp.valueOf(LocalDateTime.parse(sprint.startDate, formatter));
+		Timestamp end = Timestamp.valueOf(LocalDateTime.parse(sprint.endDate, formatter));
+ 		Timestamp complete = Timestamp.valueOf(LocalDateTime.parse(sprint.completeDate, formatter));
+
+		MultivaluedMap<String, String> query = new MultivaluedMapImpl();
+		query.add("rapidViewId",Long.toString(boardId));
+		query.add("startDate",Long.toString(start.getTime()));
+		query.add("endDate",Long.toString(end.getTime()));
+		ratesResponse response = executeCall(request, ratesResponse.class, "greenhopper/1.0/rapidviewconfig/workingdays/rates", query);
+
+		for(int i=0;i<response.rates.length;i++) {
+			response.rates[i].setStart(unmungeTimestamp(response.rates[i].getStart(),response.timezone));
+			response.rates[i].setEnd(unmungeTimestamp(response.rates[i].getEnd(),response.timezone));
+		}
+
+		return Response.ok(new GetSprintModel(sprint.id, sprint.name, start, end, complete, response.rates)).build();
 	}
 
 	@GET
