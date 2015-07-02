@@ -11,7 +11,7 @@ import java.sql.Timestamp;
 @JsonIgnoreProperties(ignoreUnknown = true)
 @XmlRootElement(name = "result")
 @XmlAccessorType(XmlAccessType.FIELD)
-public class RateModel {
+public class PeriodModel {
 
 	@XmlElement(name = "start")
 	private Timestamp start;
@@ -28,10 +28,10 @@ public class RateModel {
 	public float getRate() { return rate; }
 	public void setRate(float value) { rate = value; }
 
-	public RateModel() {
+	public PeriodModel() {
 	}
 
-	public RateModel(Timestamp start, Timestamp end, float rate) {
+	public PeriodModel(Timestamp start, Timestamp end, float rate) {
 		this.start = start;
 		this.end = end;
 		this.rate = rate;

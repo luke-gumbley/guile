@@ -35,20 +35,20 @@ public class GetSprintModel {
 	public Timestamp getComplete() { return complete; }
 	public void setComplete(Timestamp value) { complete = value; }
 
-	@XmlElement(name = "rates")
-	private RateModel[] rates;
-	public RateModel[] getRates() { return rates; }
-	public void setRates(RateModel[] value) { rates = value; }
+	@XmlElement(name = "periods")
+	private PeriodModel[] periods;
+	public PeriodModel[] getPeriods() { return periods; }
+	public void setPeriods(PeriodModel[] value) { periods = value; }
 
 	public GetSprintModel() {
 	}
 
-	public GetSprintModel(int id, String name, Timestamp start, Timestamp end, Timestamp complete, RateModel[] rates) {
+	public GetSprintModel(int id, String name, Timestamp start, Timestamp end, Timestamp complete, PeriodModel[] periods) {
 		this.id = id;
 		this.name = name;
 		this.start = start;
 		this.end = end;
 		this.complete = complete;
-		this.rates = rates;
+		this.periods = periods;
 	}
 }

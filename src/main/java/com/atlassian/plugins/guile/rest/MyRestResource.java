@@ -148,7 +148,8 @@ public class MyRestResource {
 	@JsonIgnoreProperties(ignoreUnknown = true)
 	private static class ratesResponse {
 		public String timezone;
-		public RateModel[] rates;
+		@JsonProperty("rates")
+		public PeriodModel[] periods;
 	}
 
 	@GET
@@ -235,6 +236,10 @@ public class MyRestResource {
 	}
 
 	private Map<String, List<ChangeModel>> getIssueChanges(User user, String issueId, Timestamp since, List<String> fields) {
+		return getIssueChanges(user, issueId, since, null, fields);
+	}
+
+	private Map<String, List<ChangeModel>> getIssueChanges(User user, String issueId, Timestamp since, Timestamp before, List<String> fields) {
 		MutableIssue issue = issueManager.getIssueObject(issueId);
 		fields = fields == null ? new ArrayList<String>() : fields;
 
@@ -256,6 +261,7 @@ public class MyRestResource {
 					// Note: Does not necessarily correspond to a system field Id (e.g. "Parent Issue").
 					String field = change.getField();
 					if(fields.size() > 0 && !fields.contains(field)) continue;
+					if(before != null && change.getCreated().compareTo(before) > 0) continue;
 
 					ChangeModel c = new ChangeModel(change.getCreated(),
 							history.getAuthorObject().getKey(),
@@ -365,12 +371,12 @@ public class MyRestResource {
 		query.add("endDate",Long.toString(end.getTime()));
 		ratesResponse response = executeCall(request, ratesResponse.class, "greenhopper/1.0/rapidviewconfig/workingdays/rates", query);
 
-		for(int i=0;i<response.rates.length;i++) {
-			response.rates[i].setStart(unmungeTimestamp(response.rates[i].getStart(),response.timezone));
-			response.rates[i].setEnd(unmungeTimestamp(response.rates[i].getEnd(),response.timezone));
+		for(int i=0;i<response.periods.length;i++) {
+			response.periods[i].setStart(unmungeTimestamp(response.periods[i].getStart(),response.timezone));
+			response.periods[i].setEnd(unmungeTimestamp(response.periods[i].getEnd(), response.timezone));
 		}
 
-		return Response.ok(new GetSprintModel(sprint.id, sprint.name, start, end, complete, response.rates)).build();
+		return Response.ok(new GetSprintModel(sprint.id, sprint.name, start, end, complete, response.periods)).build();
 	}
 
 	@GET

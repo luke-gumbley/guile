@@ -96,6 +96,22 @@ GADGET = {
 				type: 'text',
 				value: gadget.getPref('aspectRatio')
 			}, {
+				userpref: 'timeAxis',
+				label: 'Time Axis',
+				description: 'Choose how to render sprint periods with modified work rate (e.g. non-working days)',
+				type: 'select',
+				selected: gadget.getPref('timeAxis'),
+				options: [{
+					label: "Hide non-working days",
+					value: "nonZeroWork"
+				}, {
+					label: "Constant Time",
+					value: "constantTime"
+				}, {
+					label: "Constant Work",
+					value: "constantWork"
+				}]
+			}, {
                 id: 'plots',
                 userpref: 'plots',
                 label: 'Plots',
@@ -198,7 +214,7 @@ GADGET = {
 			})
 	},
 
-	simulate: function(sprintId, start, complete, plots, events) {
+	simulate: function(sprint, plots, events, timeAxis) {
 		var max = undefined;
 
 		// ensure a default is set for every variable required for every plot
@@ -215,10 +231,10 @@ GADGET = {
 		// and build issue knowledge with each event
 		events.forEach(function(event) {
 			// calculate and post the opening total for each plot, once all pre-sprint events have been processed.
-			if(max === undefined && event.date > start) {
+			if(max === undefined && event.date > sprint.start) {
 				max = 0;
 				// only issues in the sprint or with a parent in the sprint are relevant
-				var relevant = GADGET.relevant(issues, sprintId);
+				var relevant = GADGET.relevant(issues, sprint.id);
 				plots.forEach(function(plot) {
 					plot.y = plot.aggregate(relevant);
 					if(plot.y > max) max = plot.y;
@@ -232,9 +248,11 @@ GADGET = {
 			issues[event.issue][event.field] = event.value;
 
 			// if within the sprint
-			if(event.date > start) {
-				var relevant = GADGET.relevant(issues, sprintId);
-				var x = event.date - start;
+			if(event.date > sprint.start) {
+				var relevant = GADGET.relevant(issues, sprint.id);
+
+				var x = event.time[timeAxis];
+
 				plots.forEach(function(plot) {
 					var y = plot.aggregate(relevant);
 					// and a transition occurred
@@ -248,12 +266,27 @@ GADGET = {
 			}
 		});
 
-		var x = complete - start;
+		var x = GADGET.calculateDate(sprint.complete, sprint)[timeAxis];
 		plots.forEach(function(plot) {
 			plot.points.push([x, plot.y])
 		});
 
 		return max;
+	},
+
+	calculateDate: function(date, sprint) {
+		while(sprint.periods.length > 1 && date > sprint.periods[0].end) sprint.periods = sprint.periods.slice(1);
+		var period = sprint.periods[0];
+
+		date = Math.min(Math.max(date,period.start),period.end);
+
+		var diff = date - period.start;
+
+		return {
+			constantTime: period.constantTime + diff,
+			constantWork: period.constantWork + period.rate * diff,
+			nonZeroWork: period.nonZeroWork + (period.rate ? diff : 0)
+		};
 	},
 
 	render: function(svg, args) {
@@ -263,12 +296,24 @@ GADGET = {
         var width = gadgetDiv.width();
         var height = width / ratio;
 
+		var temp = args.sprintData.complete - args.sprintData.start;
+		args.sprintData.periods = [{
+			start: args.sprintData.start,
+			end: args.sprintData.start + temp/2,
+			rate: 0.5,
+		}, {
+			start: args.sprintData.start + temp/2,
+			end: args.sprintData.complete,
+			rate: 1,
+		}, {
+			start: args.sprintData.complete,
+			end: args.sprintData.end,
+			rate: 0,
+		}];
+
 		svg.configure({width: width, height: height});
 
-		var start = new Date(args.sprintData.start).getTime();
-		var end = new Date(args.sprintData.end).getTime();
-		var complete = new Date(args.sprintData.complete).getTime();
-		var sprintId = args.sprintData.id;
+		var timeAxis = gadget.getPref("timeAxis");
 
 		var plots = GADGET.getPlots();
 
@@ -305,20 +350,36 @@ GADGET = {
 					// parse as a float if possible, math.js can work with strings though so don't rule out crazy stuff.
 					var value = event.value === "" ? 0 : parseFloat(event.value);
 					event.value = isNaN(value) ? event.value : value;
-					events.push(event);
+					// TODO: Combine the sprintData and issueData calls on the backend to allow this filtration on the server
+					if(event.date <= args.sprintData.complete) events.push(event);
 				})
 			}
 		}
 		events.sort(function(a,b) {return a.date - b.date;});
 
-		var max = GADGET.simulate(sprintId, start, complete, plots, events);
+		var periodTotals = args.sprintData.periods.reduce(function(totals, period) {
+			period.duration = period.end - period.start;
+
+			period.constantTime = period.start - args.sprintData.start;
+			period.constantWork = totals.constantWork;
+			period.nonZeroWork = totals.nonZeroWork;
+
+			totals.constantWork += period.rate * period.duration;
+			totals.nonZeroWork += period.rate ? period.duration : 0;
+
+			return totals;
+		}, { constantWork: 0, nonZeroWork: 0, constantTime: args.sprintData.end - args.sprintData.start });
+
+		events.forEach(function(event) { event.time = GADGET.calculateDate(event.date, args.sprintData); });
+
+		var max = GADGET.simulate(args.sprintData, plots, events, timeAxis);
 
 		var left = 20;
 		var top = 20;
 		var right = width - 40;
 		var bottom = height - 40;
 
-		var xScale = (right - left) / (end - start);
+		var xScale = (right - left) / periodTotals[timeAxis];
 		var yScale = (top - bottom) / max;
 
 		plots.forEach(function(plot) {

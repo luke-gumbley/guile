@@ -36,6 +36,7 @@
         &quot;colour&quot;:&quot;green&quot;
     }]"/>
 	<UserPref name="aspectRatio" datatype="hidden" default_value="16:9"/>
+	<UserPref name="timeAxis" datatype="hidden" default_value="nonZeroWork"/>
 	<Content type="html" view="profile">
 		<![CDATA[
 			#requireResource("com.atlassian.jira.gadgets:common")
