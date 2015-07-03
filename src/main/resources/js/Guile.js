@@ -135,9 +135,39 @@ GADGET = {
 
 					plots.forEach(function(plot) { GADGET.addPlot(plot); });
                 }
+            }, {
+                id: 'idealPlot',
+                userpref: 'idealPlot',
+                label: 'Ideal line',
+                type: "callbackBuilder",
+                callback: function (parentDiv) {
+                    var idealField = AJS.$('<select>')
+                        .attr({id:'ideal-field',name:'idealPlot'})
+                        .addClass('select');
+					parentDiv.append(idealField);
+
+					var plots = GADGET.getPlots();
+					GADGET.populateIdeal(plots);
+					var idealPlot = gadget.getPref('idealPlot');
+					if(plots[idealPlot] === undefined) idealPlot = "";
+					idealField.val(idealPlot);
+                }
             },
 			AJS.gadget.fields.nowConfigured()]
 		};
+	},
+
+	populateIdeal: function(plots) {
+		var idealField = AJS.$('#ideal-field');
+		var value = idealField.val();
+
+		idealField
+			.empty()
+			.append(AJS.$('<option />', { text:'Off', value: '' }))
+			.append(AJS.$.map(plots, function(plot, index) {
+				return AJS.$('<option />', { text:plot.expr, value: index }).get();
+			}))
+			.val(value);
 	},
 
 	getPlots: function() {
@@ -160,6 +190,8 @@ GADGET = {
 		}).get();
 
 		AJS.$('#plot-field').val(JSON.stringify(plots));
+
+		GADGET.populateIdeal(plots);
 	},
 
 	addPlot: function(plot) {
@@ -168,7 +200,7 @@ GADGET = {
 
 		var plotDiv = AJS.$('<div />')
 			.addClass('plotfields')
-			.css('margin-top','5px');
+			.css('margin-bottom','5px');
 
 		var exprInput = AJS.$('<input>')
 			.attr({type:'text'})
@@ -198,7 +230,16 @@ GADGET = {
 	},
 
 	removePlot: function(event) {
-		AJS.$(event.target).parent().remove();
+		var plotField = AJS.$(event.target).parent();
+		var idealField = AJS.$('#ideal-field');
+
+		var plotIndex = plotField.index() - 1;
+		var idealIndex = idealField.val();
+
+		if(idealIndex !== '' && plotIndex <= idealIndex)
+			idealField.val(plotIndex == idealIndex ? '' : idealIndex - 1);
+
+		plotField.remove();
 		GADGET.updatePlots();
         gadget.resize();
 	},
@@ -236,7 +277,7 @@ GADGET = {
 				// only issues in the sprint or with a parent in the sprint are relevant
 				var relevant = GADGET.relevant(issues, sprint.id);
 				plots.forEach(function(plot) {
-					plot.y = plot.aggregate(relevant);
+					plot.initial = plot.y = plot.aggregate(relevant);
 					if(plot.y > max) max = plot.y;
 					plot.points = [[0, plot.y]];
 				});
@@ -266,7 +307,7 @@ GADGET = {
 			}
 		});
 
-		var x = GADGET.calculateDate(sprint.complete, sprint)[timeAxis];
+		var x = GADGET.calculateDate(sprint.complete, sprint.periods.slice(0))[timeAxis];
 		plots.forEach(function(plot) {
 			plot.points.push([x, plot.y])
 		});
@@ -274,9 +315,9 @@ GADGET = {
 		return max;
 	},
 
-	calculateDate: function(date, sprint) {
-		while(sprint.periods.length > 1 && date > sprint.periods[0].end) sprint.periods = sprint.periods.slice(1);
-		var period = sprint.periods[0];
+	calculateDate: function(date, periods) {
+		while(periods.length > 1 && date > periods[0].end) periods.shift();
+		var period = periods[0];
 
 		date = Math.min(Math.max(date,period.start),period.end);
 
@@ -286,6 +327,21 @@ GADGET = {
 			constantTime: period.constantTime + diff,
 			constantWork: period.constantWork + period.rate * diff,
 			nonZeroWork: period.nonZeroWork + (period.rate ? diff : 0)
+		};
+	},
+
+	calculateIdeal: function(initial, timeAxis, periods, periodTotals) {
+		return idealLine = {
+			line: {
+				fill: 'none',
+				stroke: 'grey',
+				'stroke-opacity': 0.5,
+				strokeWidth: 3
+			},
+
+			points: periods.map(function(period) {
+				return [period[timeAxis], (1 - period.constantWork / periodTotals.constantWork) * initial];
+			}).concat([[ periodTotals[timeAxis], 0 ]])
 		};
 	},
 
@@ -370,9 +426,15 @@ GADGET = {
 			return totals;
 		}, { constantWork: 0, nonZeroWork: 0, constantTime: args.sprintData.end - args.sprintData.start });
 
-		events.forEach(function(event) { event.time = GADGET.calculateDate(event.date, args.sprintData); });
+		// calculateDate is destructive on the 'periods' parameter, so copy it.
+		var periods = args.sprintData.periods.slice(0);
+		events.forEach(function(event) { event.time = GADGET.calculateDate(event.date, periods, periodTotals); });
 
 		var max = GADGET.simulate(args.sprintData, plots, events, timeAxis);
+
+		var idealPlot = gadget.getPref('idealPlot');
+		if(idealPlot !== '')
+			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].initial, timeAxis, args.sprintData.periods, periodTotals));
 
 		var left = 20;
 		var top = 20;
