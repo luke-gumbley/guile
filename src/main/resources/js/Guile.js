@@ -19,10 +19,14 @@ GADGET = {
 	},{
 		key: 'issueData',
 		ajaxOptions: function() {
+			var variables = AJS.$.map(GADGET.getPlots(this), function(plot) {
+				return GADGET.parseExpression(plot.expr).variables;
+			});
+
 			return {
 				url: '/rest/guile/1.0/boards/' + this.getPref('board') + '/sprints/' + this.getPref('sprint') + '/changes',
 				data: {
-					fields: ['Sprint','Parent Issue','timeestimate','timeoriginalestimate','timespent']
+					fields: AJS.$.unique(['Sprint','Parent Issue'].concat(variables))
 				},
 				contentType: 'application/json'
 			};
@@ -170,9 +174,9 @@ GADGET = {
 			.val(value);
 	},
 
-	getPlots: function() {
+	getPlots: function(gadgetObj) {
         // God only knows why gadget.getPrefs().getString escapes the string before returning it.
-		var plots = JSON.parse(gadgets.util.unescapeString(gadget.getPref('plots')));
+		var plots = JSON.parse(gadgets.util.unescapeString((gadgetObj || gadget).getPref('plots')));
 		return AJS.$.isArray(plots) ? plots : [];
 	},
 
@@ -345,6 +349,17 @@ GADGET = {
 		};
 	},
 
+	parseExpression: function(expr) {
+		expr = math.parse(expr);
+
+		return {
+			variables: expr
+				.filter(function(node) { return node.type === 'SymbolNode'; })
+				.map(function(node) { return node.name; }),
+			expr: expr.compile(math)
+		};
+	},
+
 	render: function(svg, args) {
 		var gadgetDiv = gadget.getGadget();
 		var ratioPref = gadget.getPref('aspectRatio').split(':')
@@ -381,11 +396,9 @@ GADGET = {
 				strokeWidth: 2
 			};
 
-			plot.expr = math.parse(plot.expr);
-			plot.variables = plot.expr
-				.filter(function(node) { return node.type === 'SymbolNode'; })
-				.map(function(node) { return node.name; });
-			plot.expr = plot.expr.compile(math);
+			var parsed = GADGET.parseExpression(plot.expr);
+			plot.expr = parsed.expr;
+			plot.variables = parsed.variables;
 
 			plot.aggregate = function(issues) {
 				var self = this;
