@@ -1,3 +1,62 @@
+var guile = (function($) {
+	var guile = {};
+
+	var Classy = function(definition) {
+		$.extend(definition.init.prototype, definition);
+		return definition.init;
+	};
+
+	guile.Periods = Classy({
+		init: function Periods(start, end, periods) {
+			this.start = start;
+			this.end = end;
+
+			this.periods = periods.map(function(period) {
+				return {
+					start: period.start,
+					end: period.end,
+					rate: period.rate,
+					duration: period.end - period.start
+				};
+			}).sort(function(a,b) {a.start - b.start});
+
+			this.totals = this.periods.reduce(function(totals, period) {
+				period.constantTime = period.start - start;
+				period.constantWork = totals.constantWork;
+				period.nonZeroWork = totals.nonZeroWork;
+
+				totals.constantWork += period.rate * period.duration;
+				totals.nonZeroWork += period.rate ? period.duration : 0;
+				return totals;
+			}, { constantWork: 0, nonZeroWork: 0, constantTime: end - start });
+		},
+
+		calculate: function(date) {
+			var state = this.calculateState = (this.calculateState && this.calculateState.date <= date)
+				? this.calculateState
+				: { offset: 0 };
+			state.date = date;
+
+			while(state.offset < (this.periods.length - 1) && date > this.periods[state.offset].end)
+				state.offset++;
+
+			var period = this.periods[state.offset];
+
+			date = Math.min(Math.max(date, period.start), period.end);
+
+			var diff = date - period.start;
+
+			return {
+				constantTime: period.constantTime + diff,
+				constantWork: period.constantWork + period.rate * diff,
+				nonZeroWork: period.nonZeroWork + (period.rate ? diff : 0)
+			};
+		},
+	});
+
+	return guile;
+}(AJS.$));
+
 GADGET = {
 	initialized: false,
 
@@ -311,7 +370,7 @@ GADGET = {
 			}
 		});
 
-		var x = GADGET.calculateDate(sprint.complete, sprint.periods.slice(0))[timeAxis];
+		var x = sprint.periods.calculate(sprint.complete)[timeAxis];
 		plots.forEach(function(plot) {
 			plot.points.push([x, plot.y])
 		});
@@ -319,22 +378,7 @@ GADGET = {
 		return max;
 	},
 
-	calculateDate: function(date, periods) {
-		while(periods.length > 1 && date > periods[0].end) periods.shift();
-		var period = periods[0];
-
-		date = Math.min(Math.max(date,period.start),period.end);
-
-		var diff = date - period.start;
-
-		return {
-			constantTime: period.constantTime + diff,
-			constantWork: period.constantWork + period.rate * diff,
-			nonZeroWork: period.nonZeroWork + (period.rate ? diff : 0)
-		};
-	},
-
-	calculateIdeal: function(initial, timeAxis, periods, periodTotals) {
+	calculateIdeal: function(initial, timeAxis, periods) {
 		return idealLine = {
 			line: {
 				fill: 'none',
@@ -343,9 +387,9 @@ GADGET = {
 				strokeWidth: 3
 			},
 
-			points: periods.map(function(period) {
-				return [period[timeAxis], (1 - period.constantWork / periodTotals.constantWork) * initial];
-			}).concat([[ periodTotals[timeAxis], 0 ]])
+			points: periods.periods.map(function(period) {
+				return [period[timeAxis], (1 - period.constantWork / periods.totals.constantWork) * initial];
+			}).concat([[ periods.totals[timeAxis], 0 ]])
 		};
 	},
 
@@ -381,6 +425,8 @@ GADGET = {
 			end: args.sprintData.end,
 			rate: 0,
 		}];
+
+		args.sprintData.periods = new guile.Periods(args.sprintData.start, args.sprintData.end, args.sprintData.periods);
 
 		svg.configure({width: width, height: height});
 
@@ -426,35 +472,20 @@ GADGET = {
 		}
 		events.sort(function(a,b) {return a.date - b.date;});
 
-		var periodTotals = args.sprintData.periods.reduce(function(totals, period) {
-			period.duration = period.end - period.start;
-
-			period.constantTime = period.start - args.sprintData.start;
-			period.constantWork = totals.constantWork;
-			period.nonZeroWork = totals.nonZeroWork;
-
-			totals.constantWork += period.rate * period.duration;
-			totals.nonZeroWork += period.rate ? period.duration : 0;
-
-			return totals;
-		}, { constantWork: 0, nonZeroWork: 0, constantTime: args.sprintData.end - args.sprintData.start });
-
-		// calculateDate is destructive on the 'periods' parameter, so copy it.
-		var periods = args.sprintData.periods.slice(0);
-		events.forEach(function(event) { event.time = GADGET.calculateDate(event.date, periods, periodTotals); });
+		events.forEach(function(event) { event.time = args.sprintData.periods.calculate(event.date); });
 
 		var max = GADGET.simulate(args.sprintData, plots, events, timeAxis);
 
 		var idealPlot = gadget.getPref('idealPlot');
 		if(idealPlot !== '')
-			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].initial, timeAxis, args.sprintData.periods, periodTotals));
+			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].initial, timeAxis, args.sprintData.periods));
 
 		var left = 20;
 		var top = 20;
 		var right = width - 20;
 		var bottom = height - 20;
 
-		var xScale = (right - left) / periodTotals[timeAxis];
+		var xScale = (right - left) / args.sprintData.periods.totals[timeAxis];
 		var yScale = (top - bottom) / max;
 
 		plots.forEach(function(plot) {
@@ -468,10 +499,14 @@ GADGET = {
 
 		svg.polyline([[left, top], [left, bottom], [right, bottom]],{fill:'none', stroke:'grey', strokeWidth:1 });
 
+		// timeAxis, args.sprintData.start, args.sprintData.end
+		// args.sprintData.periods,
+		// width, xScale, left, top, bottom
+
 		// Maximum number of intervals, assuming a 50-pixel gap
 		var maxIntervals = (width - 40) / 50;
 		// Minimum gap between intervals given the amount of time rendered on the graph
-		var minInterval = periodTotals[timeAxis] / maxIntervals / 60000;
+		var minInterval = args.sprintData.periods.totals[timeAxis] / maxIntervals / 60000;
 
 		// Round the time interval up to something sensible
 		var hour=60, day=24*hour;
@@ -485,10 +520,9 @@ GADGET = {
 		var offset = modulo - (startMinutes % modulo);
 		// Plot a subtle vertical line at each interval, up to 3px wide on co-incident intervals to indicate gaps.
 		// Treat interval as real-time.
-		periods = args.sprintData.periods.slice(0);
 		var line, text;
 		for(var time = args.sprintData.start + offset; time <= args.sprintData.end; time += interval * 60000) {
-			var sX = (GADGET.calculateDate(time, periods, periodTotals)[timeAxis] * xScale + left).toFixed(3);
+			var sX = (args.sprintData.periods.calculate(time)[timeAxis] * xScale + left).toFixed(3);
 			if(!line || line.attr('x1') !== sX) {
 				line = AJS.$(svg.line(sX, top, sX, bottom + 3, { stroke: 'grey', 'stroke-width': '0' }));
 				if(!text || Number.parseFloat(text.attr('x')) < Number.parseFloat(sX) - 50)
