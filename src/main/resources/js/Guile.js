@@ -451,8 +451,8 @@ GADGET = {
 
 		var left = 20;
 		var top = 20;
-		var right = width - 40;
-		var bottom = height - 40;
+		var right = width - 20;
+		var bottom = height - 20;
 
 		var xScale = (right - left) / periodTotals[timeAxis];
 		var yScale = (top - bottom) / max;
@@ -465,5 +465,38 @@ GADGET = {
 
 			svg.polyline(plot.points, plot.line);
 		});
+
+		svg.polyline([[left, top], [left, bottom], [right, bottom]],{fill:'none', stroke:'grey', strokeWidth:1 });
+
+		// Maximum number of intervals, assuming a 50-pixel gap
+		var maxIntervals = (width - 40) / 50;
+		// Minimum gap between intervals given the amount of time rendered on the graph
+		var minInterval = periodTotals[timeAxis] / maxIntervals / 60000;
+
+		// Round the time interval up to something sensible
+		var hour=60, day=24*hour;
+		var intervals = [1, 5, 10, 15, 20, 30, hour, 2*hour, 3*hour, 4*hour, 6*hour, 12*hour, day, 2*day, 3*day, 7*day];
+		var interval = intervals.filter(function(i) {return i > minInterval;})[0];
+
+		var startMinutes = args.sprintData.start - new Date(args.sprintData.start).setHours(0,0,0,0);
+		var format = interval < hour ? 'h:mma' : (interval < day ? 'ha ddd' : 'ddd Do');
+		var modulo = (interval < day ? interval : day) * 60000;
+		// ensure we start bang on an interval
+		var offset = modulo - (startMinutes % modulo);
+		// Plot a subtle vertical line at each interval, up to 3px wide on co-incident intervals to indicate gaps.
+		// Treat interval as real-time.
+		periods = args.sprintData.periods.slice(0);
+		var line, text;
+		for(var time = args.sprintData.start + offset; time <= args.sprintData.end; time += interval * 60000) {
+			var sX = (GADGET.calculateDate(time, periods, periodTotals)[timeAxis] * xScale + left).toFixed(3);
+			if(!line || line.attr('x1') !== sX) {
+				line = AJS.$(svg.line(sX, top, sX, bottom + 3, { stroke: 'grey', 'stroke-width': '0' }));
+				if(!text || Number.parseFloat(text.attr('x')) < Number.parseFloat(sX) - 50)
+					text = AJS.$(svg.text(sX,bottom,'',{'text-anchor':'middle',dy:'1.1em'}))
+			}
+			line.attr('stroke-width',Math.min(3,Number.parseInt(line.attr('stroke-width')) + 1));
+			if(text.attr('x') === sX)
+				text.text(moment(time).format(format));
+		}
 	}
 };
