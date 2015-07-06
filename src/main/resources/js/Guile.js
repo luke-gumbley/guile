@@ -54,6 +54,43 @@ var guile = (function($) {
 		},
 	});
 
+	guile.Plot = Classy({
+		init: function Plot(expression, colour) {
+			var parsed = math.parse(expression);
+
+			this.expression = expression;
+			this.variables = parsed
+				.filter(function(node) { return node.type === 'SymbolNode'; })
+				.map(function(node) { return node.name; });
+			this.compiled = parsed.compile(math);
+
+			this.line = {
+				fill: 'none',
+				stroke: colour,
+				'stroke-opacity': 0.5,
+				strokeWidth: 2
+			};
+		},
+
+		aggregate: function(issues) {
+			var self = this;
+			return issues.reduce(function(total, issue) {
+				return total += self.compiled.eval(issue);
+			}, 0)
+		},
+
+		parse: function(expr) {
+			expr = math.parse(expr);
+
+			return {
+				variables: expr
+					.filter(function(node) { return node.type === 'SymbolNode'; })
+					.map(function(node) { return node.name; }),
+				expr: expr.compile(math)
+			};
+		},
+	});
+
 	return guile;
 }(AJS.$));
 
@@ -79,7 +116,7 @@ GADGET = {
 		key: 'issueData',
 		ajaxOptions: function() {
 			var variables = AJS.$.map(GADGET.getPlots(this), function(plot) {
-				return GADGET.parseExpression(plot.expr).variables;
+				return new guile.Plot(plot.expr, plot.colour).variables;
 			});
 
 			return {
@@ -393,17 +430,6 @@ GADGET = {
 		};
 	},
 
-	parseExpression: function(expr) {
-		expr = math.parse(expr);
-
-		return {
-			variables: expr
-				.filter(function(node) { return node.type === 'SymbolNode'; })
-				.map(function(node) { return node.name; }),
-			expr: expr.compile(math)
-		};
-	},
-
 	render: function(svg, args) {
 		var gadgetDiv = gadget.getGadget();
 		var ratioPref = gadget.getPref('aspectRatio').split(':')
@@ -432,28 +458,7 @@ GADGET = {
 
 		var timeAxis = gadget.getPref("timeAxis");
 
-		var plots = GADGET.getPlots();
-
-		plots.forEach(function(plot) {
-			plot.line = {
-				fill: 'none',
-				stroke: plot.colour,
-				'stroke-opacity': 0.5,
-				strokeWidth: 2
-			};
-
-			var parsed = GADGET.parseExpression(plot.expr);
-			plot.expr = parsed.expr;
-			plot.variables = parsed.variables;
-
-			plot.aggregate = function(issues) {
-				var self = this;
-				return issues.reduce(function(total, issue) {
-					return total += self.expr.eval(issue);
-				}, 0);
-			}
-
-		});
+		var plots = GADGET.getPlots().map(function(plot) { return new guile.Plot(plot.expr, plot.colour); });
 
 		// Flatten JSON event hierarchy
 		var events = [];
