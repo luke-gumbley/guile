@@ -6,6 +6,79 @@ var guile = (function($) {
 		return definition.init;
 	};
 
+	guile.Sprint = Classy({
+		init: function Sprint(sprint, changes) {
+			this.id = sprint.id;
+			this.start = sprint.start;
+			this.end = sprint.end;
+			this.complete = sprint.complete;
+			this.periods = new guile.Periods(sprint.start, sprint.end, sprint.periods);
+
+			// TODO: pre-flatten on the server to simplify.
+			this.events = guile.flatten(changes, ['field','issue'])
+				// TODO: Combine the sprintData and issueData calls on the backend to allow this filtration on the server
+				.filter(function(event) { return event.date <= sprint.complete; })
+				.sort(function(a,b) {return a.date - b.date;})
+				.map(function(event) {
+					// TODO: Parse on the server and return numerics directly. Sigh, greenhopper.
+					// parse as a float if possible, math.js can work with strings though so don't rule out crazy stuff.
+					var value = event.value === "" ? 0 : parseFloat(event.value);
+					return $.extend(event, {
+						value: isNaN(value) ? event.value : value,
+						time: this.periods.calculate(event.date)
+					});
+				}, this);
+		},
+
+		relevant: function(issues) {
+			return Object.keys(issues)
+				.map(function(key) { return issues[key]; })
+				.filter(function(issue) {
+					// only issues in the sprint
+					return (issue['Parent Issue'] === undefined && issue['Sprint'] == this.id)
+						// or subtasks with a parent in the sprint
+						|| (issues[issue['Parent Issue']] !== undefined && issues[issue['Parent Issue']]['Sprint'] == this.id);
+				}, this)
+		},
+
+		simulate: function(plots, timeAxis) {
+			// ensure a default is set for every variable required for every plot
+			var defaults = {};
+			plots.forEach(function(plot) {
+				plot.variables.forEach(function(variable) {
+					defaults[variable] = 0;
+				});
+			});
+
+			// start with no knowledge of any issues...
+			var issues = {};
+			var started = false;
+
+			// and build issue knowledge with each event
+			this.events.forEach(function(event) {
+				// calculate and post the opening total for each plot, once all pre-sprint events have been processed.
+				if(!started && event.date > this.start) {
+					started = true;
+					// only issues in the sprint or with a parent in the sprint are relevant
+					var relevant = this.relevant(issues);
+					plots.forEach(function(plot) { plot.add(0, relevant); });
+				}
+
+				// update the issue records with information from this event
+				if(issues[event.issue] === undefined)
+					issues[event.issue] = AJS.$.extend({}, defaults);
+				issues[event.issue][event.field] = event.value;
+
+				// if within the sprint
+				if(event.date > this.start) {
+					var relevant = this.relevant(issues);
+					var x = event.time[timeAxis];
+					plots.forEach(function(plot) { plot.add(x, relevant); });
+				}
+			}, this);
+		},
+	});
+
 	guile.Periods = Classy({
 		init: function Periods(start, end, periods) {
 			this.start = start;
@@ -110,27 +183,21 @@ var guile = (function($) {
 		},
 	});
 
-	guile.processEvents = function(changes, periods, complete) {
-		var events = [];
-		for(field in changes)
-			for(issue in changes[field]) {
-				var flattened = changes[field][issue].map(function(change) {
-					return $.extend({ field: field, issue: issue }, change )
-				});
-				events = events.concat(flattened);
-			}
+	// utility function for recursively flattening nested dictionaries into an array
+	guile.flatten = function(collection, properties) {
+		var property = properties[0];
 
-		// TODO: Combine the sprintData and issueData calls on the backend to allow this filtration on the server
-		return events.filter(function(event) { return event.date <= complete; })
-			.sort(function(a,b) {return a.date - b.date;})
-			.map(function(event) {
-				// parse as a float if possible, math.js can work with strings though so don't rule out crazy stuff.
-				var value = event.value === "" ? 0 : parseFloat(event.value);
-				return $.extend(event, {
-					value: isNaN(value) ? event.value : value,
-					time: periods.calculate(event.date)
-				});
-			});
+		return $.map(Object.keys(collection), function(key) {
+			var value = collection[key];
+
+			var elements = properties.length === 1
+				? ($.isArray(value) ? value : [value])
+				: guile.flatten(value, properties.slice(1));
+
+			elements.forEach(function(e) { e[property] = key; });
+
+			return elements;
+		});
 	};
 
 	return guile;
@@ -386,54 +453,6 @@ GADGET = {
         gadget.resize();
 	},
 
-	relevant: function(issues, sprint) {
-		return Object.keys(issues)
-			.map(function(key) { return issues[key]; })
-			.filter(function(issue) {
-				// only issues in the sprint
-				return (issue['Parent Issue'] === undefined && issue['Sprint'] == sprint)
-					// or subtasks with a parent in the sprint
-					|| (issues[issue['Parent Issue']] !== undefined && issues[issue['Parent Issue']]['Sprint'] == sprint);
-			})
-	},
-
-	simulate: function(sprint, plots, events, timeAxis) {
-		// ensure a default is set for every variable required for every plot
-		var defaults = {};
-		plots.forEach(function(plot) {
-			plot.variables.forEach(function(variable) {
-				defaults[variable] = 0;
-			});
-		});
-
-		// start with no knowledge of any issues...
-		var issues = {};
-		var started = false;
-
-		// and build issue knowledge with each event
-		events.forEach(function(event) {
-			// calculate and post the opening total for each plot, once all pre-sprint events have been processed.
-			if(!started && event.date > sprint.start) {
-				started = true;
-				// only issues in the sprint or with a parent in the sprint are relevant
-				var relevant = GADGET.relevant(issues, sprint.id);
-				plots.forEach(function(plot) { plot.add(0, relevant); });
-			}
-
-			// update the issue records with information from this event
-			if(issues[event.issue] === undefined)
-				issues[event.issue] = AJS.$.extend({}, defaults);
-			issues[event.issue][event.field] = event.value;
-
-			// if within the sprint
-			if(event.date > sprint.start) {
-				var relevant = GADGET.relevant(issues, sprint.id);
-				var x = event.time[timeAxis];
-				plots.forEach(function(plot) { plot.add(x, relevant); });
-			}
-		});
-	},
-
 	calculateIdeal: function(initial, timeAxis, periods) {
 		return idealLine = {
 			line: {
@@ -475,29 +494,28 @@ GADGET = {
 			rate: 0,
 		}];
 
-		var periods = new guile.Periods(args.sprintData.start, args.sprintData.end, args.sprintData.periods);
+		var sprint = new guile.Sprint(args.sprintData, args.issueData.changes);
 
+		// property of a plot?
 		var timeAxis = gadget.getPref("timeAxis");
 
 		var plots = GADGET.getPlots().map(function(plot) { return new guile.Plot(plot.expr, plot.colour); });
 
-		var events = guile.processEvents(args.issueData.changes, periods, args.sprintData.complete);
+		sprint.simulate(plots, timeAxis);
 
-		GADGET.simulate(args.sprintData, plots, events, timeAxis);
-
-		var x = periods.calculate(args.sprintData.complete)[timeAxis];
+		var x = sprint.periods.calculate(args.sprintData.complete)[timeAxis];
 		plots.forEach(function(plot) { plot.complete(x); })
 
 		var idealPlot = gadget.getPref('idealPlot');
 		if(idealPlot !== '')
-			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].initial, timeAxis, periods));
+			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].initial, timeAxis, sprint.periods));
 
 		var left = 20;
 		var top = 20;
 		var right = width - 20;
 		var bottom = height - 20;
 
-		var xScale = (right - left) / periods.totals[timeAxis];
+		var xScale = (right - left) / sprint.periods.totals[timeAxis];
 		var yScale = (top - bottom) / Math.max.apply(Math, plots.map(function(plot) { return plot.max(); }));
 
 		plots.forEach(function(plot) {
@@ -518,7 +536,7 @@ GADGET = {
 		// Maximum number of intervals, assuming a 50-pixel gap
 		var maxIntervals = (width - 40) / 50;
 		// Minimum gap between intervals given the amount of time rendered on the graph
-		var minInterval = periods.totals[timeAxis] / maxIntervals / 60000;
+		var minInterval = sprint.periods.totals[timeAxis] / maxIntervals / 60000;
 
 		// Round the time interval up to something sensible
 		var hour=60, day=24*hour;
@@ -534,7 +552,7 @@ GADGET = {
 		// Treat interval as real-time.
 		var line, text;
 		for(var time = args.sprintData.start + offset; time <= args.sprintData.end; time += interval * 60000) {
-			var sX = (periods.calculate(time)[timeAxis] * xScale + left).toFixed(3);
+			var sX = (sprint.periods.calculate(time)[timeAxis] * xScale + left).toFixed(3);
 			if(!line || line.attr('x1') !== sX) {
 				line = AJS.$(svg.line(sX, top, sX, bottom + 3, { stroke: 'grey', 'stroke-width': '0' }));
 				if(!text || Number.parseFloat(text.attr('x')) < Number.parseFloat(sX) - 50)
