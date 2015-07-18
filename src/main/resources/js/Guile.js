@@ -89,11 +89,14 @@ var guile = (function($) {
 				period.constantTime = period.start - start;
 				period.constantWork = totals.constantWork;
 				period.nonZeroWork = totals.nonZeroWork;
-
 				totals.constantWork += period.rate * period.duration;
 				totals.nonZeroWork += period.rate ? period.duration : 0;
 				return totals;
 			}, { constantWork: 0, nonZeroWork: 0, constantTime: end - start });
+
+			this.periods.forEach(function(period) {
+				period.completion = (1 - period.constantWork / this.totals.constantWork);
+			}, this)
 		},
 
 		calculate: function(date) {
@@ -117,25 +120,39 @@ var guile = (function($) {
 				nonZeroWork: period.nonZeroWork + (period.rate ? diff : 0)
 			};
 		},
+
+		points: function(transform) {
+			transform = transform || function(time,completion) { return [time[constantTime], completion * 100]; };
+
+			return this.periods
+				.map(function(period) { return [period, period.completion]; })
+				.concat([[ this.totals, 0 ]])
+				.map(function(point) { return transform(point[0], point[1]); });
+		},
 	});
 
 	guile.Plot = Classy({
-		init: function Plot(expression, colour) {
+		init: function Plot(line, expression) {
+			expression = expression || '';
 			var parsed = math.parse(expression);
 
 			this.expression = expression;
 			this.variables = parsed
 				.filter(function(node) { return node.type === 'SymbolNode'; })
 				.map(function(node) { return node.name; });
+
+			this.defaults = {};
+			this.variables.forEach(function(variable) { this.defaults[variable] = 0; }, this);
+
 			this.compiled = parsed.compile(math);
 			this.points = [];
 
-			this.line = {
+			this.line = $.extend({
 				fill: 'none',
-				stroke: colour,
+				stroke: 'grey',
 				'stroke-opacity': 0.5,
 				strokeWidth: 2
-			};
+			},line);
 		},
 
 		aggregate: function(issues) {
@@ -181,6 +198,10 @@ var guile = (function($) {
 					.map(function(node) { return node.name; }),
 				expr: expr.compile(math)
 			};
+		},
+
+		initial: function() {
+			return this.points.length ? this.points[0][1] : 0;
 		},
 
 		max: function() {
@@ -230,7 +251,7 @@ GADGET = {
 		key: 'issueData',
 		ajaxOptions: function() {
 			var variables = AJS.$.map(GADGET.getPlots(this), function(plot) {
-				return new guile.Plot(plot.expr, plot.colour).variables;
+				return new guile.Plot({ stroke: plot.colour }, plot.expr).variables;
 			});
 
 			return {
@@ -458,23 +479,6 @@ GADGET = {
         gadget.resize();
 	},
 
-	calculateIdeal: function(initial, timeAxis, periods) {
-		return idealLine = {
-			line: {
-				fill: 'none',
-				stroke: 'grey',
-				'stroke-opacity': 0.5,
-				strokeWidth: 3
-			},
-
-			points: periods.periods.map(function(period) {
-				return [period[timeAxis], (1 - period.constantWork / periods.totals.constantWork) * initial];
-			}).concat([[ periods.totals[timeAxis], 0 ]]),
-
-			max: function() { return 0; }
-		};
-	},
-
 	render: function(svg, args) {
 		var gadgetDiv = gadget.getGadget();
 		var ratioPref = gadget.getPref('aspectRatio').split(':')
@@ -504,15 +508,10 @@ GADGET = {
 		// property of a plot?
 		var timeAxis = gadget.getPref("timeAxis");
 
-		var plots = GADGET.getPlots().map(function(plot) { return new guile.Plot(plot.expr, plot.colour); });
+		var plots = GADGET.getPlots().map(function(plot) { return new guile.Plot({ stroke: plot.colour }, plot.expr); });
 
 		// ensure a default is set for every variable required for every plot
-		var defaults = {};
-		plots.forEach(function(plot) {
-			plot.variables.forEach(function(variable) {
-				defaults[variable] = 0;
-			});
-		});
+		var defaults = plots.reduce(function(defaults, plot) { return AJS.$.extend(defaults, plot.defaults); }, {});
 
 		sprint.simulate(defaults, function(issues, time) {
 			var x = time === undefined ? 0 : time[timeAxis];
@@ -520,8 +519,14 @@ GADGET = {
 		});
 
 		var idealPlot = gadget.getPref('idealPlot');
-		if(idealPlot !== '')
-			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].points[0][1], timeAxis, sprint.periods));
+		if(idealPlot !== '') {
+			var initial = plots[idealPlot].initial();
+
+			var ideal = new guile.Plot({ strokeWidth: 3 });
+			ideal.points = sprint.periods.points(function(time, completion) { return [time[timeAxis], completion*initial]; });
+
+			plots.unshift(ideal);
+		}
 
 		var left = 20;
 		var top = 20;
