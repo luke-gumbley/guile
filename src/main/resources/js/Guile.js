@@ -41,15 +41,7 @@ var guile = (function($) {
 				}, this)
 		},
 
-		simulate: function(plots, timeAxis) {
-			// ensure a default is set for every variable required for every plot
-			var defaults = {};
-			plots.forEach(function(plot) {
-				plot.variables.forEach(function(variable) {
-					defaults[variable] = 0;
-				});
-			});
-
+		simulate: function(defaults, inspect) {
 			// start with no knowledge of any issues...
 			var issues = {};
 			var started = false;
@@ -60,22 +52,22 @@ var guile = (function($) {
 				if(!started && event.date > this.start) {
 					started = true;
 					// only issues in the sprint or with a parent in the sprint are relevant
-					var relevant = this.relevant(issues);
-					plots.forEach(function(plot) { plot.add(0, relevant); });
+					inspect(this.relevant(issues));
 				}
 
 				// update the issue records with information from this event
 				if(issues[event.issue] === undefined)
-					issues[event.issue] = AJS.$.extend({}, defaults);
+					issues[event.issue] = $.extend({}, defaults);
 				issues[event.issue][event.field] = event.value;
 
 				// if within the sprint
 				if(event.date > this.start) {
-					var relevant = this.relevant(issues);
-					var x = event.time[timeAxis];
-					plots.forEach(function(plot) { plot.add(x, relevant); });
+					inspect(this.relevant(issues), event.time);
 				}
 			}, this);
+
+			// ensure
+			inspect(this.relevant(issues), this.periods.calculate(this.complete));
 		},
 	});
 
@@ -155,16 +147,29 @@ var guile = (function($) {
 
 		add: function(x, issues) {
 			var y = this.aggregate(issues);
-			if(y !== this.y) {
-				if(this.y !== undefined) this.points.push([x, this.y]);
-				this.points.push([x, y]);
-				this.y = y;
-				if(this.initial === undefined) this.initial = y;
-			}
-		},
 
-		complete: function(x) {
-			this.points.push([x, this.y]);
+			// last two points in the array - will only ever differ in one dimension (cardinal plot)
+			var a = this.points[this.points.length - 2];
+			var b = this.points[this.points.length - 1];
+
+			// defines the axis parallel to the last segment
+			var axis = a && b && (a[0] === b[0] ? 0 : 1);
+
+			if(b === undefined)
+				// this is the first point.
+				this.points.push([x, y]);
+			else if(axis !== undefined && [x,y][axis] === b[axis]) {
+				// in line with the last two, so move the previous point instead of adding a new one
+				b[axis^1] = [x,y][axis^1];
+			}
+			else {
+				// either no existing segment or not in line - so add at least one new point, preferably moving along X first
+				if(x != b[0])
+					this.points.push([x, b[1]]);
+
+				if(y != b[1])
+					this.points.push([x, y]);
+			}
 		},
 
 		parse: function(expr) {
@@ -501,14 +506,22 @@ GADGET = {
 
 		var plots = GADGET.getPlots().map(function(plot) { return new guile.Plot(plot.expr, plot.colour); });
 
-		sprint.simulate(plots, timeAxis);
+		// ensure a default is set for every variable required for every plot
+		var defaults = {};
+		plots.forEach(function(plot) {
+			plot.variables.forEach(function(variable) {
+				defaults[variable] = 0;
+			});
+		});
 
-		var x = sprint.periods.calculate(args.sprintData.complete)[timeAxis];
-		plots.forEach(function(plot) { plot.complete(x); })
+		sprint.simulate(defaults, function(issues, time) {
+			var x = time === undefined ? 0 : time[timeAxis];
+			plots.forEach(function(plot) { plot.add(x, issues); });
+		});
 
 		var idealPlot = gadget.getPref('idealPlot');
 		if(idealPlot !== '')
-			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].initial, timeAxis, sprint.periods));
+			plots.unshift(GADGET.calculateIdeal(plots[idealPlot].points[0][1], timeAxis, sprint.periods));
 
 		var left = 20;
 		var top = 20;
