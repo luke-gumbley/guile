@@ -151,6 +151,7 @@ var guile = (function($) {
 				fill: 'none',
 				stroke: 'grey',
 				'stroke-opacity': 0.5,
+				'vector-effect': 'non-scaling-stroke',
 				strokeWidth: 2
 			},line);
 		},
@@ -479,6 +480,30 @@ GADGET = {
         gadget.resize();
 	},
 
+	axisParams: function(size, range, start) {
+		// Maximum number of intervals, assuming a 50-pixel gap
+		var intervals = size / 50;
+		// Minimum gap between intervals given the amount of time rendered on the graph
+		var gap = range / intervals;
+
+		// Round the time interval up to something sensible
+		var m = 60000, h = 60 * m, d = 24 * h;
+		var interval = [m, 5*m, 10*m, 15*m, 20*m, 30*m, h, 2*h, 3*h, 4*h, 6*h, 12*h, d, 2*d, 3*d, 7*d]
+			.filter(function(i) {return i > gap;})[0];
+
+		var dayStart = start - new Date(start).setHours(0,0,0,0);
+		var format = interval < h ? 'h:mma' : (interval < d ? 'ha ddd' : 'ddd Do');
+		var modulo = interval < d ? interval : d;
+		// ensure we start bang on an interval
+		var offset = modulo - (dayStart % modulo);
+
+		return {
+			interval: interval,
+			format: format,
+			offset:offset
+		};
+	},
+
 	render: function(svg, args) {
 		var gadgetDiv = gadget.getGadget();
 		var ratioPref = gadget.getPref('aspectRatio').split(':')
@@ -528,57 +553,47 @@ GADGET = {
 			plots.unshift(ideal);
 		}
 
-		var left = 20;
-		var top = 20;
-		var right = width - 20;
-		var bottom = height - 20;
+		var left = 20, top = 20, right = width - 20, bottom = height - 20;
 
-		var xScale = (right - left) / sprint.periods.totals[timeAxis];
-		var yScale = (top - bottom) / Math.max.apply(Math, plots.map(function(plot) { return plot.max(); }));
+		var size = { x: right - left, y: bottom - top };
 
-		plots.forEach(function(plot) {
-			plot.points.forEach(function(point) {
-				point[0] = point[0] * xScale + left;
-				point[1] = point[1] * yScale + bottom;
-			});
+		var range = {
+			x: sprint.periods.totals[timeAxis],
+			y: Math.max.apply(Math, plots.map(function(plot) { return plot.max(); }))
+		};
 
-			svg.polyline(plot.points, plot.line);
-		});
+		var scale = { x: size.x / range.x, y: -size.y / range.y };
 
-		svg.polyline([[left, top], [left, bottom], [right, bottom]],{fill:'none', stroke:'grey', strokeWidth:1 });
+		var plotGroup = svg.group({ transform: ''.concat(
+			'translate(', left, ',', bottom, '),',
+			'scale(', scale.x, ',', scale.y, ')'
+		)});
 
-		// timeAxis, args.sprintData.start, args.sprintData.end
-		// periods,
-		// width, xScale, left, top, bottom
+		plots.forEach(function(plot) { svg.polyline(plotGroup, plot.points, plot.line); });
 
-		// Maximum number of intervals, assuming a 50-pixel gap
-		var maxIntervals = (width - 40) / 50;
-		// Minimum gap between intervals given the amount of time rendered on the graph
-		var minInterval = sprint.periods.totals[timeAxis] / maxIntervals / 60000;
+		svg.polyline([[left, top], [left, bottom], [right, bottom]], { fill:'none', stroke:'grey', strokeWidth:1 });
 
-		// Round the time interval up to something sensible
-		var hour=60, day=24*hour;
-		var intervals = [1, 5, 10, 15, 20, 30, hour, 2*hour, 3*hour, 4*hour, 6*hour, 12*hour, day, 2*day, 3*day, 7*day];
-		var interval = intervals.filter(function(i) {return i > minInterval;})[0];
+		var axis = GADGET.axisParams(size.x, range.x, sprint.start);
 
-		var startMinutes = args.sprintData.start - new Date(args.sprintData.start).setHours(0,0,0,0);
-		var format = interval < hour ? 'h:mma' : (interval < day ? 'ha ddd' : 'ddd Do');
-		var modulo = (interval < day ? interval : day) * 60000;
-		// ensure we start bang on an interval
-		var offset = modulo - (startMinutes % modulo);
 		// Plot a subtle vertical line at each interval, up to 3px wide on co-incident intervals to indicate gaps.
 		// Treat interval as real-time.
 		var line, text;
-		for(var time = args.sprintData.start + offset; time <= args.sprintData.end; time += interval * 60000) {
-			var sX = (sprint.periods.calculate(time)[timeAxis] * xScale + left).toFixed(3);
-			if(!line || line.attr('x1') !== sX) {
-				line = AJS.$(svg.line(sX, top, sX, bottom + 3, { stroke: 'grey', 'stroke-width': '0' }));
-				if(!text || Number.parseFloat(text.attr('x')) < Number.parseFloat(sX) - 50)
-					text = AJS.$(svg.text(sX,bottom,'',{'text-anchor':'middle',dy:'1.1em'}))
+		for(var time = sprint.start + axis.offset; time <= sprint.end; time += axis.interval) {
+
+			var x = math.round(sprint.periods.calculate(time)[timeAxis] * scale.x + left, 3);
+
+			if(!line || line.x !== x) {
+				line = AJS.$(svg.line(x, top, x, bottom + 3, { stroke: 'grey' }));
+				line.x = x;
+
+				if(!text || text.x < x - 50) {
+					text = AJS.$(svg.text(x, bottom, '', { 'text-anchor': 'middle', dy:'1.1em' }));
+					text.x = x;
+				}
 			}
-			line.attr('stroke-width',Math.min(3,Number.parseInt(line.attr('stroke-width')) + 1));
-			if(text.attr('x') === sX)
-				text.text(moment(time).format(format));
+			line.attr('stroke-width',line.count = Math.min(3, (line.count || 0) + 1));
+			if(text.x === x)
+				text.text(moment(time).format(axis.format));
 		}
 	}
 };
