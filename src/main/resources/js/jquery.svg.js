@@ -95,11 +95,11 @@ $.extend(SVGManager.prototype, {
 				}
 				container.appendChild(svg);
 			}
-			this._afterLoad(container, svg, settings || {});
 		}
 		catch (e) {
 			$(container).html('<p>SVG is not supported natively on this browser</p>');
 		}
+		this._afterLoad(container, svg, settings || {});
 	},
 
 	/* Post-processing once loaded. */
@@ -108,7 +108,7 @@ $.extend(SVGManager.prototype, {
 		this._settings[container ? container.id : ''] = null;
 		var wrapper = new this._wrapperClass(svg, container);
 		$.data(container || svg, $.svg.propertyName, wrapper);
-		try {
+//		try {
 			if (settings.loadURL) { // Load URL
 				wrapper.load(settings.loadURL, settings);
 			}
@@ -118,10 +118,10 @@ $.extend(SVGManager.prototype, {
 			if (settings.onLoad && !settings.loadURL) { // Onload callback
 				settings.onLoad.apply(container || svg, [wrapper]);
 			}
-		}
-		catch (e) {
-			alert(e);
-		}
+//		}
+//		catch (e) {
+//			alert(e);
+//		}
 	},
 
 	/** Return the SVG wrapper created for a given container.
