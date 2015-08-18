@@ -132,11 +132,12 @@ var guile = (function($) {
 	});
 
 	guile.Plot = Classy({
-		init: function Plot(line, expression) {
+		init: function Plot(line, timescale, expression) {
 			expression = expression || '';
 			var parsed = math.parse(expression);
 
 			this.expression = expression;
+			this.timescale = timescale;
 			this.variables = parsed
 				.filter(function(node) { return node.type === 'SymbolNode'; })
 				.map(function(node) { return node.name; });
@@ -163,7 +164,16 @@ var guile = (function($) {
 			}, 0)
 		},
 
-		add: function(x, issues) {
+		scale: function(time) {
+			return time === undefined ? 0 : time[this.timescale];
+		},
+
+		add: function(time, value) {
+			this.points.push([this.scale(time), value]);
+		},
+
+		plot: function(time, issues) {
+			var x = this.scale(time);
 			var y = this.aggregate(issues);
 
 			// last two points in the array - will only ever differ in one dimension (cardinal plot)
@@ -207,6 +217,15 @@ var guile = (function($) {
 
 		max: function() {
 			return this.points.reduce(function(max, point) { return max > point[1] ? max : point[1]; }, 0);
+		},
+
+		ideal: function(periods) {
+			var initial = this.initial();
+			var ideal = new guile.Plot({ strokeWidth: 3 }, this.timescale);
+
+			periods.points(function(time, completion) { ideal.add(time, completion*initial); });
+
+			return ideal;
 		},
 	});
 
@@ -252,7 +271,7 @@ GADGET = {
 		key: 'issueData',
 		ajaxOptions: function() {
 			var variables = AJS.$.map(GADGET.getPlots(this), function(plot) {
-				return new guile.Plot({ stroke: plot.colour }, plot.expr).variables;
+				return new guile.Plot({ stroke: plot.colour }, '', plot.expr).variables;
 			});
 
 			return {
@@ -332,11 +351,11 @@ GADGET = {
 				type: 'text',
 				value: gadget.getPref('aspectRatio')
 			}, {
-				userpref: 'timeAxis',
-				label: 'Time Axis',
+				userpref: 'timescale',
+				label: 'Timescale',
 				description: 'Choose how to render sprint periods with modified work rate (e.g. non-working days)',
 				type: 'select',
-				selected: gadget.getPref('timeAxis'),
+				selected: gadget.getPref('timescale'),
 				options: [{
 					label: "Hide non-working days",
 					value: "nonZeroWork"
@@ -530,35 +549,26 @@ GADGET = {
 
 		var sprint = new guile.Sprint(args.sprintData, args.issueData.changes);
 
-		// property of a plot?
-		var timeAxis = gadget.getPref("timeAxis");
+		var timescale = gadget.getPref("timescale");
 
-		var plots = GADGET.getPlots().map(function(plot) { return new guile.Plot({ stroke: plot.colour }, plot.expr); });
+		var plots = GADGET.getPlots().map(function(plot) { return new guile.Plot({ stroke: plot.colour }, timescale, plot.expr); });
 
 		// ensure a default is set for every variable required for every plot
 		var defaults = plots.reduce(function(defaults, plot) { return AJS.$.extend(defaults, plot.defaults); }, {});
 
 		sprint.simulate(defaults, function(issues, time) {
-			var x = time === undefined ? 0 : time[timeAxis];
-			plots.forEach(function(plot) { plot.add(x, issues); });
+			plots.forEach(function(plot) { plot.plot(time, issues); });
 		});
 
 		var idealPlot = gadget.getPref('idealPlot');
-		if(idealPlot !== '') {
-			var initial = plots[idealPlot].initial();
-
-			var ideal = new guile.Plot({ strokeWidth: 3 });
-			ideal.points = sprint.periods.points(function(time, completion) { return [time[timeAxis], completion*initial]; });
-
-			plots.unshift(ideal);
-		}
+		if(idealPlot !== '') plots.unshift(plots[idealPlot].ideal(sprint.periods));
 
 		var left = 20, top = 20, right = width - 20, bottom = height - 20;
 
 		var size = { x: right - left, y: bottom - top };
 
 		var range = {
-			x: sprint.periods.totals[timeAxis],
+			x: sprint.periods.totals[timescale],
 			y: Math.max.apply(Math, plots.map(function(plot) { return plot.max(); }))
 		};
 
@@ -580,7 +590,7 @@ GADGET = {
 		var line, text;
 		for(var time = sprint.start + axis.offset; time <= sprint.end; time += axis.interval) {
 
-			var x = math.round(sprint.periods.calculate(time)[timeAxis] * scale.x + left, 3);
+			var x = math.round(sprint.periods.calculate(time)[timescale] * scale.x + left, 3);
 
 			if(!line || line.x !== x) {
 				line = AJS.$(svg.line(x, top, x, bottom + 3, { stroke: 'grey' }));
