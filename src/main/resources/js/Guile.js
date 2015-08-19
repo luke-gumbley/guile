@@ -19,15 +19,7 @@ var guile = (function($) {
 				// TODO: Combine the sprintData and issueData calls on the backend to allow this filtration on the server
 				.filter(function(event) { return event.date <= sprint.complete; })
 				.sort(function(a,b) {return a.date - b.date;})
-				.map(function(event) {
-					// TODO: Parse on the server and return numerics directly. Sigh, greenhopper.
-					// parse as a float if possible, math.js can work with strings though so don't rule out crazy stuff.
-					var value = event.value === "" ? 0 : parseFloat(event.value);
-					return $.extend(event, {
-						value: isNaN(value) ? event.value : value,
-						time: this.periods.calculate(event.date)
-					});
-				}, this);
+				.map(function(event) { return new guile.Event(event, this.periods); }, this);
 		},
 
 		relevant: function(issues) {
@@ -35,9 +27,9 @@ var guile = (function($) {
 				.map(function(key) { return issues[key]; })
 				.filter(function(issue) {
 					// only issues in the sprint
-					return (issue['Parent Issue'] === undefined && issue['Sprint'] == this.id)
+					return (issue['parent'] === undefined && issue['sprint'] == this.id)
 						// or subtasks with a parent in the sprint
-						|| (issues[issue['Parent Issue']] !== undefined && issues[issue['Parent Issue']]['Sprint'] == this.id);
+						|| (issues[issue['parent']] !== undefined && issues[issue['parent']]['sprint'] == this.id);
 				}, this)
 		},
 
@@ -145,7 +137,7 @@ var guile = (function($) {
 			this.defaults = {};
 			this.variables.forEach(function(variable) { this.defaults[variable] = 0; }, this);
 
-			this.compiled = parsed.compile(math);
+			this.compiled = parsed.compile();
 			this.points = [];
 
 			this.line = $.extend({
@@ -158,10 +150,7 @@ var guile = (function($) {
 		},
 
 		aggregate: function(issues) {
-			var self = this;
-			return issues.reduce(function(total, issue) {
-				return total += self.compiled.eval(issue);
-			}, 0)
+			return issues.length === 0 ? 0 : math.sum(issues.map(function(issue) { return this.compiled.eval(issue); }, this));
 		},
 
 		scale: function(time) {
@@ -174,7 +163,12 @@ var guile = (function($) {
 
 		plot: function(time, issues) {
 			var x = this.scale(time);
-			var y = this.aggregate(issues);
+			var a = this.aggregate(issues);
+			var y = $.isNumeric(a)
+				? a
+				: math.unit('h').equalBase(a)
+					? a.toNumber('h')
+					: a.value;
 
 			// last two points in the array - will only ever differ in one dimension (cardinal plot)
 			var a = this.points[this.points.length - 2];
@@ -229,6 +223,54 @@ var guile = (function($) {
 		},
 	});
 
+	guile.Event = Classy({
+		init: function Event(event, periods) {
+			$.extend(this, event);
+
+			var field = guile.field(event.field);
+			this.field = field.alias
+
+			// TODO: Parse on the server and return numerics directly. Sigh, greenhopper.
+			// parse as a float if possible, math.js can work with strings though so don't rule out crazy stuff.
+			var value = event.value === "" ? 0 : parseFloat(event.value);
+			this.value = isNaN(value)
+				? event.value
+				: field.unit
+					? math.unit(value, field.unit)
+					: value;
+			this.time = periods.calculate(event.date);
+		},
+	});
+
+	// JIRA field definitions
+	var fields = [{
+		name: 'timeestimate',
+		alias: 'remaining',
+		unit: 'ms'
+	}, {
+		name: 'timespent',
+		alias: 'spent',
+		unit: 'ms'
+	}, {
+		name: 'timeoriginalestimate',
+		alias: 'original',
+		unit: 'ms'
+	}, {
+		name: 'Parent Issue',
+		alias: 'parent',
+	}, {
+		name: 'Sprint',
+		alias: 'sprint',
+	}];
+
+	guile.field = function(name) {
+		var field;
+		return fields.every(function(f) { field = f; return f.name !== name && f.alias !== name; })
+			? { name: name, alias: name }
+			: field;
+	},
+
+
 	// utility function for recursively flattening nested dictionaries into an array
 	guile.flatten = function(collection, properties) {
 		var property = properties[0];
@@ -270,15 +312,16 @@ GADGET = {
 	},{
 		key: 'issueData',
 		ajaxOptions: function() {
-			var variables = AJS.$.map(GADGET.getPlots(this), function(plot) {
+			var plotVariables = AJS.$.map(GADGET.getPlots(this), function(plot) {
 				return new guile.Plot({ stroke: plot.colour }, '', plot.expr).variables;
 			});
+			var issueFields = AJS.$.unique(['sprint','parent']
+				.concat(plotVariables)
+				.map(function(v) { return guile.field(v).name; }));
 
 			return {
 				url: '/rest/guile/1.0/boards/' + this.getPref('board') + '/sprints/' + this.getPref('sprint') + '/changes',
-				data: {
-					fields: AJS.$.unique(['Sprint','Parent Issue'].concat(variables))
-				},
+				data: { fields: issueFields },
 				contentType: 'application/json'
 			};
 		}
