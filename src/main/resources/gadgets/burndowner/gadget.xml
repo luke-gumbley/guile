@@ -26,13 +26,13 @@
 	<UserPref name="board" datatype="hidden" />
 	<UserPref name="sprint" datatype="hidden" />
     <UserPref name="plots" datatype="hidden" default_value="[{
-        &quot;expr&quot;:&quot;timeestimate&quot;,
+        &quot;expr&quot;:&quot;remaining&quot;,
         &quot;colour&quot;:&quot;red&quot;
     },{
-        &quot;expr&quot;:&quot;timeoriginalestimate&quot;,
+        &quot;expr&quot;:&quot;original&quot;,
         &quot;colour&quot;:&quot;blue&quot;
     },{
-        &quot;expr&quot;:&quot;timespent&quot;,
+        &quot;expr&quot;:&quot;spent&quot;,
         &quot;colour&quot;:&quot;green&quot;
     }]"/>
 	<UserPref name="idealPlot" datatype="hidden" default_value="0"/>
