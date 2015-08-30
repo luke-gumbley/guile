@@ -126,18 +126,18 @@ var guile = (function($) {
 	guile.Plot = Classy({
 		init: function Plot(line, timescale, expression) {
 			expression = expression || '';
-			var parsed = math.parse(expression);
 
 			this.expression = expression;
+			$.extend(this,guile.parse(expression));
+
 			this.timescale = timescale;
-			this.variables = parsed
-				.filter(function(node) { return node.type === 'SymbolNode'; })
-				.map(function(node) { return node.name; });
 
 			this.defaults = {};
-			this.variables.forEach(function(variable) { this.defaults[variable] = 0; }, this);
+			this.fields.forEach(function(field) {
+				this.defaults[field.alias] = field.unit ? math.unit(0,field.unit) : 0;
+			}, this);
+			this.defaultValue = this.compiled.eval(this.defaults);
 
-			this.compiled = parsed.compile();
 			this.points = [];
 
 			this.line = $.extend({
@@ -150,7 +150,9 @@ var guile = (function($) {
 		},
 
 		aggregate: function(issues) {
-			return issues.length === 0 ? 0 : math.sum(issues.map(function(issue) { return this.compiled.eval(issue); }, this));
+			return issues.length === 0
+				? this.defaultValue
+				: math.sum(issues.map(function(issue) { return this.compiled.eval(issue); }, this));
 		},
 
 		scale: function(time) {
@@ -163,12 +165,7 @@ var guile = (function($) {
 
 		plot: function(time, issues) {
 			var x = this.scale(time);
-			var a = this.aggregate(issues);
-			var y = $.isNumeric(a)
-				? a
-				: math.unit('h').equalBase(a)
-					? a.toNumber('h')
-					: a.value;
+			var y = this.aggregate(issues);
 
 			// last two points in the array - will only ever differ in one dimension (cardinal plot)
 			var a = this.points[this.points.length - 2];
@@ -180,7 +177,7 @@ var guile = (function($) {
 			if(b === undefined)
 				// this is the first point.
 				this.points.push([x, y]);
-			else if(axis !== undefined && [x,y][axis] === b[axis]) {
+			else if(axis !== undefined && math.equal([x,y][axis],b[axis])) {
 				// in line with the last two, so move the previous point instead of adding a new one
 				b[axis^1] = [x,y][axis^1];
 			}
@@ -189,35 +186,34 @@ var guile = (function($) {
 				if(x != b[0])
 					this.points.push([x, b[1]]);
 
-				if(y != b[1])
+				if(!math.equal(y, b[1]))
 					this.points.push([x, y]);
 			}
 		},
 
-		parse: function(expr) {
-			expr = math.parse(expr);
-
-			return {
-				variables: expr
-					.filter(function(node) { return node.type === 'SymbolNode'; })
-					.map(function(node) { return node.name; }),
-				expr: expr.compile(math)
-			};
+		initial: function() {
+			return this.points.length ? this.points[0][1] : this.defaultValue;
 		},
 
-		initial: function() {
-			return this.points.length ? this.points[0][1] : 0;
+		min: function() {
+			return math.min(this.points.map(function(point) {return point[1];}));
 		},
 
 		max: function() {
-			return this.points.reduce(function(max, point) { return max > point[1] ? max : point[1]; }, 0);
+			return math.max(this.points.map(function(point) {return point[1];}));
+		},
+
+		coords: function(unit) {
+			return math.isNumeric(this.defaultValue)
+				? this.points
+				: this.points.map(function(point) { return [point[0],point[1].toNumber(unit)]; });
 		},
 
 		ideal: function(periods) {
 			var initial = this.initial();
-			var ideal = new guile.Plot({ strokeWidth: 3 }, this.timescale);
+			var ideal = new guile.Plot({ strokeWidth: 3 }, this.timescale, this.expression);
 
-			periods.points(function(time, completion) { ideal.add(time, completion*initial); });
+			periods.points(function(time, completion) { ideal.add(time, math.multiply(completion,initial)); });
 
 			return ideal;
 		},
@@ -242,7 +238,7 @@ var guile = (function($) {
 		},
 	});
 
-	// JIRA field definitions
+	// JIRA field definitions (exposed via guile.field)
 	var fields = [{
 		name: 'timeestimate',
 		alias: 'remaining',
@@ -268,8 +264,19 @@ var guile = (function($) {
 		return fields.every(function(f) { field = f; return f.name !== name && f.alias !== name; })
 			? { name: name, alias: name }
 			: field;
-	},
+	};
 
+	// utility function for parsing an expression and returning the contained fields
+	guile.parse = function(expr) {
+		expr = math.parse(expr);
+
+		return {
+			fields: expr
+				.filter(function(node) { return node.type === 'SymbolNode'; })
+				.map(function(node) { return guile.field(node.name); }),
+			compiled: expr.compile()
+		};
+	};
 
 	// utility function for recursively flattening nested dictionaries into an array
 	guile.flatten = function(collection, properties) {
@@ -287,6 +294,29 @@ var guile = (function($) {
 			return elements;
 		});
 	};
+
+	// utility function to test if two numbers have equal bases
+	guile.equalBase = function(a, b) {
+		return math.isNumeric(a)
+			? math.isNumeric(b)
+			: !math.isNumeric(b) && a.equalBase(b);
+	};
+
+	// utility function to calculate a reasonable time axis interval
+	guile.axisInterval = function(range, intervals, pixelGap) {
+		// provide number of intervals or size and a required minimum pixel gap
+		if(pixelGap) intervals /= pixelGap;
+
+		// Minimum gap between intervals given the range
+		var gap = math.divide(range, intervals);
+
+		// Round the time interval up to something sensible
+		return ['1 minute', '5 minutes', '10 minutes', '15 minutes', '20 minutes', '30 minutes',
+				'1h', '2h', '3h', '4h', '6h', '12h',
+				'1 day', '2 days', '3 days', '7 days']
+			.map(function(i) { return math.unit(i); })
+			.filter(function(i) { return math.larger(i, gap); })[0];
+	}
 
 	return guile;
 }(AJS.$));
@@ -312,12 +342,13 @@ GADGET = {
 	},{
 		key: 'issueData',
 		ajaxOptions: function() {
-			var plotVariables = AJS.$.map(GADGET.getPlots(this), function(plot) {
-				return new guile.Plot({ stroke: plot.colour }, '', plot.expr).variables;
+			var plotFields = AJS.$.map(GADGET.getPlots(this), function(plot) {
+				return guile.parse(plot.expr).fields;
 			});
-			var issueFields = AJS.$.unique(['sprint','parent']
-				.concat(plotVariables)
-				.map(function(v) { return guile.field(v).name; }));
+
+			var issueFields = AJS.$.unique([guile.field('sprint'),guile.field('parent')]
+				.concat(plotFields)
+				.map(function(field) { return field.name; }));
 
 			return {
 				url: '/rest/guile/1.0/boards/' + this.getPref('board') + '/sprints/' + this.getPref('sprint') + '/changes',
@@ -542,28 +573,19 @@ GADGET = {
         gadget.resize();
 	},
 
-	axisParams: function(size, range, start) {
-		// Maximum number of intervals, assuming a 50-pixel gap
-		var intervals = size / 50;
-		// Minimum gap between intervals given the amount of time rendered on the graph
-		var gap = range / intervals;
+	axisFormat: function(interval) {
+		return math.smaller(interval, math.unit('1h'))
+			? 'h:mma'
+			: (math.smaller(interval, math.unit('1 day')) ? 'ha ddd' : 'ddd Do');
+	},
 
-		// Round the time interval up to something sensible
-		var m = 60000, h = 60 * m, d = 24 * h;
-		var interval = [m, 5*m, 10*m, 15*m, 20*m, 30*m, h, 2*h, 3*h, 4*h, 6*h, 12*h, d, 2*d, 3*d, 7*d]
-			.filter(function(i) {return i > gap;})[0];
+	gridOffset: function(start, interval) {
+		// milliseconds since midnight
+		var day = start - new Date(start).setHours(0,0,0,0);
 
-		var dayStart = start - new Date(start).setHours(0,0,0,0);
-		var format = interval < h ? 'h:mma' : (interval < d ? 'ha ddd' : 'ddd Do');
-		var modulo = interval < d ? interval : d;
-		// ensure we start bang on an interval
-		var offset = modulo - (dayStart % modulo);
-
-		return {
-			interval: interval,
-			format: format,
-			offset:offset
-		};
+		// offset to the nearest interval, or midnight if the interval is longer than a day
+		interval = math.min(interval, math.unit('1 day')).toNumber('ms');
+		return interval - (day % interval);
 	},
 
 	render: function(svg, args) {
@@ -610,23 +632,49 @@ GADGET = {
 
 		var size = { x: right - left, y: bottom - top };
 
-		var range = {
-			x: sprint.periods.totals[timescale],
-			y: Math.max.apply(Math, plots.map(function(plot) { return plot.max(); }))
-		};
+		var axes = plots
+			.reduce(function(axes, plot) {
+				var add = axes.every(function(axis) {
+					var match = guile.equalBase(axis.unit, plot.defaultValue);
+					if(match) axis.plots.push(plot);
+					return !match;
+				});
+				if(add) axes.push({ unit: plot.defaultValue, plots: [plot] });
+				return axes;
+			}, []);
 
-		var scale = { x: size.x / range.x, y: -size.y / range.y };
+		var range = { x: sprint.periods.totals[timescale] };
+		var scale = { x: size.x / range.x };
 
-		var plotGroup = svg.group({ transform: ''.concat(
-			'translate(', left, ',', bottom, '),',
-			'scale(', scale.x, ',', scale.y, ')'
-		)});
+		axes.forEach(function(axis) {
+			range.y = math.max(axis.plots.map(function(plot) { return plot.max(); }))
 
-		plots.forEach(function(plot) { svg.polyline(plotGroup, plot.points, plot.line); });
+			// this part still time- and unit-specific.
+			var interval = guile.axisInterval(range.y, size.y, 50);
+
+			// find the largest unit smaller than the interval
+			var unit = ['h','minute','s'].filter(function(u) { return math.smallerEq(math.unit(1,u), interval); })[0]
+
+			scale.y = -size.y / range.y.toNumber(unit);
+
+			var plotGroup = svg.group({ transform: ''.concat(
+				'translate(', left, ',', bottom, '),',
+				'scale(', scale.x, ',', scale.y, ')'
+			)});
+
+			axis.plots.forEach(function(plot) { svg.polyline(plotGroup, plot.coords(unit), plot.line); });
+		});
 
 		svg.polyline([[left, top], [left, bottom], [right, bottom]], { fill:'none', stroke:'grey', strokeWidth:1 });
 
-		var axis = GADGET.axisParams(size.x, range.x, sprint.start);
+		var interval = guile.axisInterval(math.unit(range.x,'ms'), size.x, 50);
+
+		// stick with numeric formats here for now.
+		var axis = {
+			interval: interval.toNumber('ms'),
+			format: GADGET.axisFormat(interval),
+			offset: GADGET.gridOffset(sprint.start, interval)
+		}
 
 		// Plot a subtle vertical line at each interval, up to 3px wide on co-incident intervals to indicate gaps.
 		// Treat interval as real-time.
