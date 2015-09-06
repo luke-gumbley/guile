@@ -204,7 +204,7 @@ var guile = (function($) {
 		},
 
 		coords: function(unit) {
-			return math.isNumeric(this.defaultValue)
+			return !unit || math.isNumeric(this.defaultValue)
 				? this.points
 				: this.points.map(function(point) { return [point[0],point[1].toNumber(unit)]; });
 		},
@@ -218,6 +218,131 @@ var guile = (function($) {
 			return ideal;
 		},
 	});
+
+	guile.Range = Classy({
+		init: function Range(start, end) {
+			this.start = start;
+			this.end = end;
+			this.range = math.subtract(end, start)
+		},
+
+		transformed: function(transform) {
+			return new guile.Range(transform(this.start), transform(this.end));
+		}
+	});
+
+	guile.Axis = Classy({
+		init: function Axis(options) {
+			// takes a real value and returns a value in axis-space
+			this.transform = options.transform || function(v) { return v; };
+
+			this.screen = new guile.Range(options.screen.start, options.screen.end);
+			this.value = new guile.Range(options.value.start, options.value.end);
+			this.transformed = this.value.transformed(this.transform);
+
+			this.scale = math.divide(this.screen.range, this.transformed.range);
+
+			// calculate parameters for the grid
+			var interval = this.calculateInterval(50, options.intervals);
+			this.calculateGrid(interval, options.zero, options.snap);
+
+			this.unit = interval.isUnit && interval.formatUnits();
+
+			this.numericScale = this.unit ? this.screen.range / this.transformed.range.toNumber(this.unit) : this.scale;
+		},
+
+		calculateInterval: function(gap, intervals) {
+			// try to get an axis tick every x pixels
+			gap = math.divide(gap, this.scale);
+
+			// find the smallest size larger than the gap
+			return intervals
+				// TODO: fix math.larger so it accepts two Unit arguments (or find some other func)
+				? intervals.filter(function(interval) { return math.larger(interval, gap); })[0]
+				: guile.Axis.autoInterval(gap);
+		},
+
+		calculateGrid: function(interval, reset, snap) {
+			// snap to the nearest interval or the maximum provided
+			snap = snap ? math.min(interval, snap) : interval;
+
+			// zero the start value to ensure the interval lands correctly
+			var zero = reset ? reset(this.value.start) : this.value.start;
+
+			// find the offset to ensure the first tick lands on an interval
+			//var offset = math.subtract(snap, math.mod(zero, snap));
+			// TODO: fix math.mod so it accepts two Unit arguments
+			var q = math.divide(zero, snap);
+			q = (q.isUnit ? q.value : q);
+			var offset = math.subtract(math.multiply(math.ceil(q), snap), zero);
+
+
+			this.grid = { interval: interval, offset: offset };
+		},
+
+		renderGrid: function(renderFunc) {
+			for(var value = this.value.start + this.grid.offset; value <= this.value.end; value += this.grid.interval) {
+				var transformed = math.multiply(this.transform(value), this.scale);
+				var screen = (transformed.isUnit ? transformed.value : transformed) + this.screen.start;
+				renderFunc(value, screen, transformed);
+			}
+		}
+	});
+
+	// YAGNI... but nyah nyah it's my project
+	guile.Axis.units = {
+		'TIME': ['h', 'minute', 's']
+	};
+
+	guile.Axis.getUnits = function(unit) {
+		if(!unit.isUnit) return undefined;
+
+		for(base in guile.Axis.units) {
+			if(unit.equalBase(math.type.Unit.BASE_UNITS[base]))
+				return guile.Axis.units[base];
+		}
+
+		return [unit.formatUnits()];
+	}
+
+	guile.Axis.autoInterval = function(gap) {
+		if(gap.isUnit) {
+			var interval = guile.Axis.getUnits(gap)
+				.map(function(unit) {
+					return { unit: unit, num: guile.Axis.autoInterval(gap.toNumber(unit))};
+				})
+				.sort(function(a, b) {
+					a = math.log10(a.num);
+					b = math.log10(b.num);
+					return (a >= 0) != (b >= 0)
+						// prefer intervals greater than 1
+						? math.compare(b, a)
+						// failing that distinction, prefer the interval closer to zero
+						: math.compare(math.abs(a), math.abs(b));
+				})
+				[0];
+			return math.unit(interval.num, interval.unit);
+		}
+
+		if(gap == 0) return 0;
+		var exp = math.ceil(math.log10(math.abs(gap)));
+		// round to 2 s.f. modulo 5
+		var factor = math.pow(10, exp - 2) * 5;
+		return math.round(gap / factor) * factor;
+	};
+
+	guile.Axis.findUnit = function(interval) {
+		if(!interval.isUnit) return undefined;
+
+		return guile.Axis.getUnits(interval)
+			.filter(function(u) { return math.smallerEq(math.unit(1,u), interval); })
+			.concat(quantity.formatUnits())
+			[0];
+	};
+
+	guile.Axis.dateIntervals = ['1 minute', '5 minutes', '10 minutes', '15 minutes', '20 minutes', '30 minutes',
+		'1h', '2h', '3h', '4h', '6h', '12h',
+		'1 day', '2 days', '3 days', '7 days'].map(function(i) { return math.unit(i).toNumber('ms'); });
 
 	guile.Event = Classy({
 		init: function Event(event, periods) {
@@ -301,22 +426,6 @@ var guile = (function($) {
 			? math.isNumeric(b)
 			: !math.isNumeric(b) && a.equalBase(b);
 	};
-
-	// utility function to calculate a reasonable time axis interval
-	guile.axisInterval = function(range, intervals, pixelGap) {
-		// provide number of intervals or size and a required minimum pixel gap
-		if(pixelGap) intervals /= pixelGap;
-
-		// Minimum gap between intervals given the range
-		var gap = math.divide(range, intervals);
-
-		// Round the time interval up to something sensible
-		return ['1 minute', '5 minutes', '10 minutes', '15 minutes', '20 minutes', '30 minutes',
-				'1h', '2h', '3h', '4h', '6h', '12h',
-				'1 day', '2 days', '3 days', '7 days']
-			.map(function(i) { return math.unit(i); })
-			.filter(function(i) { return math.larger(i, gap); })[0];
-	}
 
 	return guile;
 }(AJS.$));
@@ -573,21 +682,6 @@ GADGET = {
         gadget.resize();
 	},
 
-	axisFormat: function(interval) {
-		return math.smaller(interval, math.unit('1h'))
-			? 'h:mma'
-			: (math.smaller(interval, math.unit('1 day')) ? 'ha ddd' : 'ddd Do');
-	},
-
-	gridOffset: function(start, interval) {
-		// milliseconds since midnight
-		var day = start - new Date(start).setHours(0,0,0,0);
-
-		// offset to the nearest interval, or midnight if the interval is longer than a day
-		interval = math.min(interval, math.unit('1 day')).toNumber('ms');
-		return interval - (day % interval);
-	},
-
 	render: function(svg, args) {
 		var gadgetDiv = gadget.getGadget();
 		var ratioPref = gadget.getPref('aspectRatio').split(':')
@@ -630,7 +724,14 @@ GADGET = {
 
 		var left = 20, top = 20, right = width - 20, bottom = height - 20;
 
-		var size = { x: right - left, y: bottom - top };
+		var horizontal = new guile.Axis({
+			screen: { start: left, end: right },
+			value: { start: sprint.start, end: sprint.end },
+			transform: function(time) { return sprint.periods.calculate(time)[timescale]; },
+			snap: math.unit('1 day').toNumber('ms'),
+			zero: function(start) { return start - new Date(start).setHours(0,0,0,0); },
+			intervals: guile.Axis.dateIntervals
+		});
 
 		var axes = plots
 			.reduce(function(axes, plot) {
@@ -643,46 +744,33 @@ GADGET = {
 				return axes;
 			}, []);
 
-		var range = { x: sprint.periods.totals[timescale] };
-		var scale = { x: size.x / range.x };
+		axes.forEach(function(group) {
+			var extents = AJS.$.map(group.plots, function(p) { return [p.min(), p.max()]; });
 
-		axes.forEach(function(axis) {
-			range.y = math.max(axis.plots.map(function(plot) { return plot.max(); }))
-
-			// this part still time- and unit-specific.
-			var interval = guile.axisInterval(range.y, size.y, 50);
-
-			// find the largest unit smaller than the interval
-			var unit = ['h','minute','s'].filter(function(u) { return math.smallerEq(math.unit(1,u), interval); })[0]
-
-			scale.y = -size.y / range.y.toNumber(unit);
+			var axis = group.axis = new guile.Axis({
+				screen: { start: bottom, end: top },
+				value: { start: math.min(extents), end: math.max(extents) }
+			});
 
 			var plotGroup = svg.group({ transform: ''.concat(
-				'translate(', left, ',', bottom, '),',
-				'scale(', scale.x, ',', scale.y, ')'
+				'translate(', horizontal.screen.start, ',', axis.screen.start, '),',
+				'scale(', horizontal.numericScale, ',', axis.numericScale, ')'
 			)});
 
-			axis.plots.forEach(function(plot) { svg.polyline(plotGroup, plot.coords(unit), plot.line); });
+			group.plots.forEach(function(plot) { svg.polyline(plotGroup, plot.coords(axis.unit), plot.line); });
+
+			// TODO: draw vertical axes here
 		});
 
 		svg.polyline([[left, top], [left, bottom], [right, bottom]], { fill:'none', stroke:'grey', strokeWidth:1 });
 
-		var interval = guile.axisInterval(math.unit(range.x,'ms'), size.x, 50);
+		var format = math.smaller(horizontal.grid.interval, math.unit('1h').toNumber('ms'))
+			? 'h:mma'
+			: (math.smaller(horizontal.grid.interval, math.unit('1 day').toNumber('ms')) ? 'ha ddd' : 'ddd Do');
 
-		// stick with numeric formats here for now.
-		var axis = {
-			interval: interval.toNumber('ms'),
-			format: GADGET.axisFormat(interval),
-			offset: GADGET.gridOffset(sprint.start, interval)
-		}
-
-		// Plot a subtle vertical line at each interval, up to 3px wide on co-incident intervals to indicate gaps.
-		// Treat interval as real-time.
 		var line, text;
-		for(var time = sprint.start + axis.offset; time <= sprint.end; time += axis.interval) {
-
-			var x = math.round(sprint.periods.calculate(time)[timescale] * scale.x + left, 3);
-
+		horizontal.renderGrid(function(time, x) {
+			// Plot a subtle vertical line at each interval, up to 3px wide on co-incident intervals to indicate gaps.
 			if(!line || line.x !== x) {
 				line = AJS.$(svg.line(x, top, x, bottom + 3, { stroke: 'grey' }));
 				line.x = x;
@@ -694,7 +782,8 @@ GADGET = {
 			}
 			line.attr('stroke-width',line.count = Math.min(3, (line.count || 0) + 1));
 			if(text.x === x)
-				text.text(moment(time).format(axis.format));
-		}
+				text.text(moment(time).format(format));
+		});
+
 	}
 };
