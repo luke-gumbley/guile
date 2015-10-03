@@ -253,7 +253,7 @@ var guile = (function($) {
 
 		calculateInterval: function(gap, intervals) {
 			// try to get an axis tick every x pixels
-			gap = math.divide(gap, guile.math.abs(this.scale));
+			gap = math.divide(gap, math.abs(this.scale));
 
 			// find the smallest size larger than the gap
 			return intervals
@@ -423,15 +423,6 @@ var guile = (function($) {
 
 	// utility math functions to cope with existing shortcomings of math.js
 	guile.math = {
-		abs: function(x) {
-			if(x.isUnit) {
-				var y = x.clone();
-				y.value = Math.abs(y.value);
-				return y;
-			}
-			return math.abs(x);
-		},
-
 		mod: function(x, y) {
 			var q = math.divide(x, y);
 			q = (q.isUnit ? q.value : q);
