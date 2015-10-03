@@ -253,11 +253,10 @@ var guile = (function($) {
 
 		calculateInterval: function(gap, intervals) {
 			// try to get an axis tick every x pixels
-			gap = math.divide(gap, this.scale);
+			gap = math.divide(gap, guile.math.abs(this.scale));
 
 			// find the smallest size larger than the gap
 			return intervals
-				// TODO: fix math.larger so it accepts two Unit arguments (or find some other func)
 				? intervals.filter(function(interval) { return math.larger(interval, gap); })[0]
 				: guile.Axis.autoInterval(gap);
 		},
@@ -270,12 +269,7 @@ var guile = (function($) {
 			var zero = reset ? reset(this.value.start) : this.value.start;
 
 			// find the offset to ensure the first tick lands on an interval
-			//var offset = math.subtract(snap, math.mod(zero, snap));
-			// TODO: fix math.mod so it accepts two Unit arguments
-			var q = math.divide(zero, snap);
-			q = (q.isUnit ? q.value : q);
-			var offset = math.subtract(math.multiply(math.ceil(q), snap), zero);
-
+			var offset = math.subtract(snap, guile.math.mod(zero, snap));
 
 			this.grid = { interval: interval, offset: offset };
 		},
@@ -426,6 +420,24 @@ var guile = (function($) {
 			? math.isNumeric(b)
 			: !math.isNumeric(b) && a.equalBase(b);
 	};
+
+	// utility math functions to cope with existing shortcomings of math.js
+	guile.math = {
+		abs: function(x) {
+			if(x.isUnit) {
+				var y = x.clone();
+				y.value = Math.abs(y.value);
+				return y;
+			}
+			return math.abs(x);
+		},
+
+		mod: function(x, y) {
+			var q = math.divide(x, y);
+			q = (q.isUnit ? q.value : q);
+			return math.multiply(math.subtract(x, y), Math.floor(q));
+		},
+	}
 
 	return guile;
 }(AJS.$));
