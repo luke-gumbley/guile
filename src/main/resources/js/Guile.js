@@ -426,7 +426,7 @@ var guile = (function($) {
 		mod: function(x, y) {
 			var q = math.divide(x, y);
 			q = (q.isUnit ? q.value : q);
-			return math.multiply(math.subtract(x, y), Math.floor(q));
+			return math.subtract(x, math.multiply(y, Math.floor(q)));
 		},
 	}
 
