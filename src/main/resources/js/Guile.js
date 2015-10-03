@@ -275,7 +275,7 @@ var guile = (function($) {
 		},
 
 		renderGrid: function(renderFunc) {
-			for(var value = this.value.start + this.grid.offset; value <= this.value.end; value += this.grid.interval) {
+			for(var value = math.add(this.value.start, this.grid.offset); math.smallerEq(value, this.value.end); value = math.add(value, this.grid.interval)) {
 				var transformed = math.multiply(this.transform(value), this.scale);
 				var screen = (transformed.isUnit ? transformed.value : transformed) + this.screen.start;
 				renderFunc(value, screen, transformed);
@@ -725,7 +725,7 @@ GADGET = {
 		var idealPlot = gadget.getPref('idealPlot');
 		if(idealPlot !== '') plots.unshift(plots[idealPlot].ideal(sprint.periods));
 
-		var left = 20, top = 20, right = width - 20, bottom = height - 20;
+		var left = 40, top = 20, right = width - 20, bottom = height - 20;
 
 		var horizontal = new guile.Axis({
 			screen: { start: left, end: right },
@@ -762,7 +762,11 @@ GADGET = {
 
 			group.plots.forEach(function(plot) { svg.polyline(plotGroup, plot.coords(axis.unit), plot.line); });
 
-			// TODO: draw vertical axes here
+			var unit = group.axis.unit;
+			group.axis.renderGrid(function(value, y) {
+				if(value.isUnit) value = value.toNumber(unit);
+				AJS.$(svg.text(left - 3, y, value.toString(), { 'text-anchor': 'end' }));
+			});
 		});
 
 		svg.polyline([[left, top], [left, bottom], [right, bottom]], { fill:'none', stroke:'grey', strokeWidth:1 });
